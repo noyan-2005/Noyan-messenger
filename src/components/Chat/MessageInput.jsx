@@ -8,8 +8,21 @@ export default function MessageInput({
   value,
   onChange,
   onSend,
+  onTyping,
   placeholder = "Write a message...",
 }) {
+  // Handle typing
+  const handleChange = (event) => {
+    const newValue = event.target.value;
+
+    // Update message value
+    onChange(newValue);
+
+    // Tell parent that user is typing
+    onTyping?.(newValue);
+  };
+
+  // Handle Enter key
   const handleKeyDown = (event) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
@@ -20,6 +33,7 @@ export default function MessageInput({
     }
   };
 
+  // Handle form submit
   const handleSubmit = (event) => {
     event.preventDefault();
 
@@ -29,7 +43,7 @@ export default function MessageInput({
   };
 
   return (
-    <div className="shrink-0 px-5 py-4 backdrop-blur-xl">
+    <div className="shrink-0 px-5 pt-1 pb-4 backdrop-blur-3xl" >
       <form
         onSubmit={handleSubmit}
         className="
@@ -40,7 +54,7 @@ export default function MessageInput({
           border
           border-gray-200
           bg-gray-50
-          p-2
+          p-1.5
           shadow-sm
           transition-all
           duration-200
@@ -68,13 +82,16 @@ export default function MessageInput({
             hover:shadow-[0_5px_10px_rgba(99,102,241,0.48)]
           "
         >
-          <Paperclip size={19} strokeWidth={1.8} />
+          <Paperclip
+            size={19}
+            strokeWidth={1.8}
+          />
         </button>
 
         {/* Input */}
         <textarea
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           rows={1}
@@ -111,7 +128,10 @@ export default function MessageInput({
             hover:text-gray-500
           "
         >
-          <Smile size={22} strokeWidth={1.8} />
+          <Smile
+            size={27}
+            strokeWidth={1.8}
+          />
         </button>
 
         {/* Send */}
@@ -123,12 +143,13 @@ export default function MessageInput({
             flex
             h-10
             w-10
-            pr-0.5
             shrink-0
             items-center
             justify-center
             rounded-3xl
             bg-indigo-600
+            pt-0.5
+            pr-0.5
             text-white
             shadow-sm
             transition-all
@@ -142,10 +163,12 @@ export default function MessageInput({
             disabled:shadow-none
           "
         >
-          <Send size={18} strokeWidth={2} />
+          <Send
+            size={18}
+            strokeWidth={2}
+          />
         </button>
       </form>
-
     </div>
   );
 }

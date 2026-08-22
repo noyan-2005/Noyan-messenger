@@ -1,4 +1,4 @@
-import { Check, CheckCheck } from "lucide-react";
+import MessageStatus from "./MessageStatus";
 
 export default function MessageBubble({ message }) {
   const isSent = message.sender === "me";
@@ -18,7 +18,6 @@ export default function MessageBubble({ message }) {
           text-sm
           leading-5
           shadow-sm
-
           ${
             isSent
               ? `
@@ -37,7 +36,7 @@ export default function MessageBubble({ message }) {
         `}
       >
         {/* Message */}
-        <p className="whitespace-pre-wrap break-words pr-12">
+        <p className="whitespace-pre-wrap break-words pr-16">
           {message.text}
         </p>
 
@@ -58,20 +57,15 @@ export default function MessageBubble({ message }) {
             }
           `}
         >
+          {/* Time */}
           <span>{message.time}</span>
 
-          {isSent &&
-            (message.seen ? (
-              <CheckCheck
-                size={14}
-                strokeWidth={2}
-              />
-            ) : (
-              <Check
-                size={14}
-                strokeWidth={2}
-              />
-            ))}
+          {/* Status */}
+          {isSent && (
+            <MessageStatus
+              status={message.status}
+            />
+          )}
         </div>
       </div>
     </div>

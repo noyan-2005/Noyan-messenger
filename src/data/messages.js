@@ -5,21 +5,21 @@ const messages = {
       sender: "them",
       text: "Hey! How are you?",
       time: "10:40",
-      seen: true,
+      status: "seen",
     },
     {
       id: 2,
       sender: "me",
       text: "I'm good, thanks! How about you?",
       time: "10:42",
-      seen: true,
+      status: "seen",
     },
     {
       id: 3,
       sender: "them",
       text: "I'm doing great!",
       time: "10:43",
-      seen: true,
+      status: "seen",
     },
   ],
 
@@ -29,7 +29,7 @@ const messages = {
       sender: "them",
       text: "Hey Sarah here 👋",
       time: "09:20",
-      seen: true,
+      status: "seen",
     },
   ],
 
@@ -39,7 +39,7 @@ const messages = {
       sender: "them",
       text: "Thanks for everything!",
       time: "Yesterday",
-      seen: true,
+      status: "seen",
     },
   ],
 };

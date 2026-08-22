@@ -1,7 +1,7 @@
 export default function TypingIndicator() {
   return (
-    <div className="flex items-center gap-1">
-      <span className="text-xs text-indigo-500">
+    <div className="flex h-4 items-center gap-1">
+      <span className="text-xs leading-4 text-indigo-500">
         typing
       </span>
 

@@ -1,8 +1,10 @@
 import { Phone, Video, MoreVertical } from "lucide-react";
-
 import TypingIndicator from "./TypingIndicator";
 
-export default function ChatHeader({ chat, isTyping = false, }) {
+export default function ChatHeader({
+  chat,
+  isTyping = false,
+}) {
   if (!chat) return null;
 
   return (
@@ -56,30 +58,45 @@ export default function ChatHeader({ chat, isTyping = false, }) {
 
         {/* Name & Status */}
         <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold text-gray-900">
+          {/* Name */}
+          <h2
+            className="
+              truncate
+              text-sm
+              font-semibold
+              leading-5
+              text-gray-900
+            "
+          >
             {chat.name}
           </h2>
 
-           {isTyping ? (
-            <TypingIndicator />
-          ) : (
-            <span
-              className={`
-                text-xs
-                ${chat.online
-                  ? "text-emerald-500"
-                  : "text-gray-400"
-                }
-              `}
-            >
-              {chat.online ? "Online" : "Offline"}
-            </span>
-          )}
+          {/* Status */}
+          <div className="flex h-4 items-center">
+            {isTyping ? (
+              <TypingIndicator />
+            ) : (
+              <span
+                className={`
+                  text-xs
+                  leading-4
+                  ${
+                    chat.online
+                      ? "text-emerald-500"
+                      : "text-gray-400"
+                  }
+                `}
+              >
+                {chat.online ? "Online" : "Offline"}
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1">
+        {/* Video Call */}
         <button
           type="button"
           aria-label="Start video call"
@@ -97,9 +114,13 @@ export default function ChatHeader({ chat, isTyping = false, }) {
             hover:text-gray-900
           "
         >
-          <Video size={19} strokeWidth={1.8} />
+          <Video
+            size={19}
+            strokeWidth={1.8}
+          />
         </button>
 
+        {/* Voice Call */}
         <button
           type="button"
           aria-label="Start voice call"
@@ -117,9 +138,13 @@ export default function ChatHeader({ chat, isTyping = false, }) {
             hover:text-gray-900
           "
         >
-          <Phone size={18} strokeWidth={1.8} />
+          <Phone
+            size={18}
+            strokeWidth={1.8}
+          />
         </button>
 
+        {/* More */}
         <button
           type="button"
           aria-label="More options"
@@ -137,7 +162,10 @@ export default function ChatHeader({ chat, isTyping = false, }) {
             hover:text-gray-900
           "
         >
-          <MoreVertical size={19} strokeWidth={1.8} />
+          <MoreVertical
+            size={19}
+            strokeWidth={1.8}
+          />
         </button>
       </div>
     </header>

@@ -1,1 +1,53 @@
 @import "tailwindcss";
+
+@keyframes contextMenuEnter {
+  from {
+    opacity: 0;
+    transform: scale(0.94) translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.context-menu-enter {
+  animation: contextMenuEnter 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top left;
+}
+
+/* Glass Scrollbar */
+.glass-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.35) transparent;
+}
+
+/* Chrome / Edge / Safari */
+.glass-scrollbar::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.glass-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+.glass-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.3);
+  border: 1px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+
+.glass-scrollbar::-webkit-scrollbar-button,
+.glass-scrollbar::-webkit-scrollbar-button:single-button,
+.glass-scrollbar::-webkit-scrollbar-button:vertical:start:decrement,
+.glass-scrollbar::-webkit-scrollbar-button:vertical:end:increment {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+  border: none !important;
+}
