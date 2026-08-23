@@ -53,7 +53,7 @@ export default function ChatLayout() {
 
     const newMessage = {
       id: Date.now(),
-      sender: "me",
+      sender: "theme",
       text,
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
@@ -61,7 +61,6 @@ export default function ChatLayout() {
       }),
       status: "sending",
 
-      // فعلاً اگر Reply نداشته باشیم null است
       replyTo: replyingTo
         ? replyingTo.id
         : null,
@@ -176,42 +175,14 @@ export default function ChatLayout() {
           flex-1
           flex-col
           overflow-hidden
-          bg-gradient-to-br
-          from-[#dbeafe]
-          via-[#f8fafc]
-          to-[#ede9fe]
+          bg-cover
+          bg-center
         "
+        style={{
+          backgroundImage:
+            "url('/patern.jpg')",
+        }}
       >
-
-        {/* Background Glow */}
-
-        <div
-          className="
-            pointer-events-none
-            absolute
-            -left-32
-            top-20
-            h-[450px]
-            w-[450px]
-            rounded-full
-            bg-blue-400/20
-            blur-[100px]
-          "
-        />
-
-        <div
-          className="
-            pointer-events-none
-            absolute
-            -right-32
-            bottom-20
-            h-[450px]
-            w-[450px]
-            rounded-full
-            bg-purple-400/20
-            blur-[100px]
-          "
-        />
 
         {/* Header */}
 
@@ -240,6 +211,8 @@ export default function ChatLayout() {
             value={message}
             onChange={setMessage}
             onSend={handleSendMessage}
+            replyingTo={replyingTo}
+            onCancelReply={() => setReplyingTo(null)}
           />
         </div>
 
@@ -252,7 +225,7 @@ export default function ChatLayout() {
           }
           className="
             absolute
-            bottom-24
+            bottom-44
             left-5
             z-50
             rounded-lg

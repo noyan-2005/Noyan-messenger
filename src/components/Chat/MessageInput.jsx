@@ -4,12 +4,16 @@ import {
   Send,
 } from "lucide-react";
 
+import ReplyPreview from "./ReplyPreview";
+
 export default function MessageInput({
   value,
   onChange,
   onSend,
   onTyping,
   placeholder = "Write a message...",
+  replyingTo,
+  onCancelReply,
 }) {
   // Handle typing
   const handleChange = (event) => {
@@ -44,6 +48,15 @@ export default function MessageInput({
 
   return (
     <div className="shrink-0 px-5 pt-1 pb-4 backdrop-blur-3xl" >
+
+      {/* Reply Preview */}
+      <div className="overflow-hidden rounded-t-3xl">
+        <ReplyPreview
+          message={replyingTo}
+          onCancel={onCancelReply}
+        />
+      </div>  
+
       <form
         onSubmit={handleSubmit}
         className="
