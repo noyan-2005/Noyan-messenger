@@ -63,15 +63,16 @@ export default function MessageList({
 
     if (!messageElement) return;
 
-    setHighlightedMessageId(messageId);
-    setTimeout(() => {
-      setHighlightedMessageId(null);
-    }, 1400);
-
     messageElement.scrollIntoView({
       behavior: "smooth",
       block: "center",
     });
+
+    setHighlightedMessageId(messageId);
+
+    setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 2200);
   };
 
 
@@ -191,6 +192,23 @@ export default function MessageList({
             onContextMenu={(event) =>
               handleContextMenu(event, message)
             }
+            onDoubleClick={() =>
+              onReply?.(message)
+            }
+            className={`
+              relative
+              rounded-3xl
+              transition-all
+              duration-700
+              ${
+                highlightedMessageId === message.id
+                  ? `
+                    bg-gray-600/20
+                    shadow-[0_0_40px_rgba(99,102,241,0.18)]
+                  `
+                  : ""
+              }
+            `}
           >
             <MessageBubble
               message={message}

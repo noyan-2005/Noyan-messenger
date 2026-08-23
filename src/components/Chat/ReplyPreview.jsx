@@ -9,6 +9,7 @@ export default function ReplyPreview({
   return (
     <div
       className="
+        reply-preview-enter
         flex
         items-center
         gap-3
