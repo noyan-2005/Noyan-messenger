@@ -10,7 +10,7 @@ const chats = [
   },
   {
     id: 2,
-    name: "Mmd Amin",
+    name: "Mmd Amin ",
     avatar: "../../public/user2.webp",
     lastMessage: "See you tomorrow!",
     time: "09:30",

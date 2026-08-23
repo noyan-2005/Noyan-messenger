@@ -8,11 +8,15 @@ export default function MessageList({
 }) {
   const containerRef = useRef(null);
   const bottomRef = useRef(null);
+  const messageRefs = useRef({});
 
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [newMessageCount, setNewMessageCount] = useState(0);
 
   const [contextMenu, setContextMenu] = useState(null);
+
+  const [highlightedMessageId, setHighlightedMessageId] =
+  useState(null);
 
   // -----------------------------
   // Scroll
@@ -52,6 +56,24 @@ export default function MessageList({
       setNewMessageCount((count) => count + 1);
     }
   }, [messages]);
+
+
+  const handleReplyClick = (messageId) => {
+    const messageElement = messageRefs.current[messageId];
+
+    if (!messageElement) return;
+
+    setHighlightedMessageId(messageId);
+    setTimeout(() => {
+      setHighlightedMessageId(null);
+    }, 1400);
+
+    messageElement.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+    });
+  };
+
 
   // -----------------------------
   // Context Menu
@@ -162,6 +184,9 @@ export default function MessageList({
       <div className="flex flex-col gap-2">
         {messages.map((message) => (
           <div
+            ref={(element) => {
+              messageRefs.current[message.id] = element;
+            }}
             key={message.id}
             onContextMenu={(event) =>
               handleContextMenu(event, message)
@@ -169,6 +194,17 @@ export default function MessageList({
           >
             <MessageBubble
               message={message}
+              repliedMessage = {
+                message.replyTo 
+                  ? messages.find(
+                      (msg) => msg.id === message.replyTo
+                    ) 
+                  : null
+              }
+              onReplyClick = {handleReplyClick}
+              highlighted={
+                highlightedMessageId === message.id
+              }
             />
           </div>
         ))}

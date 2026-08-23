@@ -1,6 +1,11 @@
 import MessageStatus from "./MessageStatus";
 
-export default function MessageBubble({ message }) {
+export default function MessageBubble({
+  message,
+  repliedMessage,
+  onReplyClick,
+  highlighted
+}) {
   const isSent = message.sender === "me";
 
   return (
@@ -18,6 +23,15 @@ export default function MessageBubble({ message }) {
           text-sm
           leading-5
           shadow-sm
+          transition-all
+          duration-700
+
+           ${
+              highlighted
+                ? "brightness-90 shadow-md"
+                : ""
+            }
+
           ${
             isSent
               ? `
@@ -35,6 +49,42 @@ export default function MessageBubble({ message }) {
           }
         `}
       >
+
+        {/* Reply */}
+        {repliedMessage && (
+          <div
+            onClick={()=> onReplyClick(repliedMessage.id)}
+            className={`
+              mb-2
+              overflow-hidden
+              rounded-lg
+              border-l-4
+              px-2.5
+              py-1.5
+              text-xs
+              cursor-pointer
+
+              ${
+                isSent
+                  ? "border-indigo-500 bg-black/5"
+                  : "border-indigo-500 bg-gray-100/80"
+              }
+            `}
+          >
+            {/* Sender */}
+            <p className="font-semibold text-indigo-600">
+              {repliedMessage.sender === "me"
+                ? "You"
+                : "User"}
+            </p>
+
+            {/* Original message */}
+            <p className="mt-0.5 truncate text-gray-500">
+              {repliedMessage.text}
+            </p>
+          </div>
+        )}
+
         {/* Message */}
         <p className="whitespace-pre-wrap break-words pr-16">
           {message.text}
@@ -50,6 +100,7 @@ export default function MessageBubble({ message }) {
             items-center
             gap-1
             text-[10px]
+
             ${
               isSent
                 ? "text-gray-500"

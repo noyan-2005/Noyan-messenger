@@ -4,6 +4,8 @@ import {
   Send,
 } from "lucide-react";
 
+import { useRef, useEffect } from "react";
+
 import ReplyPreview from "./ReplyPreview";
 
 export default function MessageInput({
@@ -15,6 +17,18 @@ export default function MessageInput({
   replyingTo,
   onCancelReply,
 }) {
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    if (replyingTo) {
+      inputRef.current?.focus();
+    }
+  }, [replyingTo]);
+
   // Handle typing
   const handleChange = (event) => {
     const newValue = event.target.value;
@@ -103,6 +117,7 @@ export default function MessageInput({
 
         {/* Input */}
         <textarea
+          ref={inputRef}
           value={value}
           onChange={handleChange}
           onKeyDown={handleKeyDown}

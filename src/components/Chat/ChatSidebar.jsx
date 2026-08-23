@@ -1,6 +1,7 @@
 import ChatItem from "./ChatItem";
 import HeaderIcon from "../ui/HeaderIcon";
 import ChatSearch from "./ChatSearch"
+import Navbar from "./Navbar";
 
 export default function ChatSidebar({
   chats = [],
@@ -28,6 +29,9 @@ export default function ChatSidebar({
           />
         ))}
       </div>
+
+      {/* Navbar */}
+        <Navbar />
     </aside>
   );
 }
