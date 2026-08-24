@@ -53,7 +53,7 @@ export default function ChatLayout() {
 
     const newMessage = {
       id: Date.now(),
-      sender: "theme",
+      sender: "me",
       text,
       time: new Date().toLocaleTimeString([], {
         hour: "2-digit",
@@ -206,7 +206,7 @@ export default function ChatLayout() {
 
         {/* Input */}
 
-        <div className="relative z-10 shrink-0">
+        <div className="relative z-50 shrink-0">
           <MessageInput
             value={message}
             onChange={setMessage}

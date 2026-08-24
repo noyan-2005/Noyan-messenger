@@ -86,7 +86,7 @@ export default function MessageBubble({
         )}
 
         {/* Message */}
-        <p className="whitespace-pre-wrap break-words pr-16">
+        <p className="font-emoji whitespace-pre-wrap break-words pr-16">
           {message.text}
         </p>
 
