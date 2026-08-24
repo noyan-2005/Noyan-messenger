@@ -1,29 +1,41 @@
 import { useRef, useEffect, useState } from "react";
+
 import MessageBubble from "./MessageBubble/MessageBubble";
 import MessageContextMenu from "./MessageContextMenu/MessageContextMenu";
 
 export default function MessageList({
   messages = [],
   onReply,
+  onCopy,
+  onForward,
+  onDelete,
+  onReaction,
 }) {
   const containerRef = useRef(null);
   const bottomRef = useRef(null);
   const messageRefs = useRef({});
 
-  const [isNearBottom, setIsNearBottom] = useState(true);
-  const [newMessageCount, setNewMessageCount] = useState(0);
+  const [isNearBottom, setIsNearBottom] =
+    useState(true);
 
-  const [contextMenu, setContextMenu] = useState(null);
+  const [newMessageCount, setNewMessageCount] =
+    useState(0);
 
-  const [highlightedMessageId, setHighlightedMessageId] =
-  useState(null);
+  const [contextMenu, setContextMenu] =
+    useState(null);
+
+  const [
+    highlightedMessageId,
+    setHighlightedMessageId,
+  ] = useState(null);
 
   // -----------------------------
   // Scroll
   // -----------------------------
 
   const handleScroll = () => {
-    const container = containerRef.current;
+    const container =
+      containerRef.current;
 
     if (!container) return;
 
@@ -32,7 +44,8 @@ export default function MessageList({
       container.scrollTop -
       container.clientHeight;
 
-    const nearBottom = distanceFromBottom < 100;
+    const nearBottom =
+      distanceFromBottom < 100;
 
     setIsNearBottom(nearBottom);
 
@@ -46,20 +59,32 @@ export default function MessageList({
   // -----------------------------
 
   useEffect(() => {
-    if (messages.length === 0) return;
+    if (messages.length === 0) {
+      return;
+    }
 
     if (isNearBottom) {
       bottomRef.current?.scrollIntoView({
         behavior: "smooth",
       });
     } else {
-      setNewMessageCount((count) => count + 1);
+      setNewMessageCount(
+        (count) => count + 1
+      );
     }
   }, [messages]);
 
+  // -----------------------------
+  // Reply Click
+  // -----------------------------
 
-  const handleReplyClick = (messageId) => {
-    const messageElement = messageRefs.current[messageId];
+  const handleReplyClick = (
+    messageId
+  ) => {
+    const messageElement =
+      messageRefs.current[
+        messageId
+      ];
 
     if (!messageElement) return;
 
@@ -68,38 +93,70 @@ export default function MessageList({
       block: "center",
     });
 
-    setHighlightedMessageId(messageId);
+    setHighlightedMessageId(
+      messageId
+    );
 
     setTimeout(() => {
       setHighlightedMessageId(null);
     }, 2200);
   };
 
-
   // -----------------------------
   // Context Menu
   // -----------------------------
 
-  const handleContextMenu = (event, message) => {
+  const handleContextMenu = (
+    event,
+    message
+  ) => {
     event.preventDefault();
 
     const menuWidth = 208;
     const menuHeight = 260;
+    const padding = 10;
 
-    const x = Math.min(
-      event.clientX,
-      window.innerWidth - menuWidth - 10
+    let x = event.clientX;
+    let y = event.clientY;
+
+    // Prevent menu from going
+    // outside right side
+    if (
+      x + menuWidth >
+      window.innerWidth
+    ) {
+      x =
+        window.innerWidth -
+        menuWidth -
+        padding;
+    }
+
+    // Prevent menu from going
+    // outside bottom
+    if (
+      y + menuHeight >
+      window.innerHeight
+    ) {
+      y =
+        window.innerHeight -
+        menuHeight -
+        padding;
+    }
+
+    x = Math.max(
+      padding,
+      x
     );
 
-    const y = Math.min(
-      event.clientY,
-      window.innerHeight - menuHeight - 10
+    y = Math.max(
+      padding,
+      y
     );
 
     setContextMenu({
       message,
-      x: Math.max(10, x),
-      y: Math.max(10, y),
+      x,
+      y,
     });
   };
 
@@ -111,9 +168,14 @@ export default function MessageList({
     setContextMenu(null);
   };
 
-  // Close with Escape
+  // -----------------------------
+  // Escape
+  // -----------------------------
+
   useEffect(() => {
-    const handleKeyDown = (event) => {
+    const handleKeyDown = (
+      event
+    ) => {
       if (event.key === "Escape") {
         closeContextMenu();
       }
@@ -132,18 +194,21 @@ export default function MessageList({
     };
   }, []);
 
-  // Close when clicking outside
+  // -----------------------------
+  // Click Outside
+  // -----------------------------
+
   useEffect(() => {
+    if (!contextMenu) return;
+
     const handleClick = () => {
       closeContextMenu();
     };
 
-    if (contextMenu) {
-      window.addEventListener(
-        "click",
-        handleClick
-      );
-    }
+    window.addEventListener(
+      "click",
+      handleClick
+    );
 
     return () => {
       window.removeEventListener(
@@ -180,64 +245,94 @@ export default function MessageList({
         py-3
       "
     >
+
+      {/* ========================= */}
       {/* Messages */}
+      {/* ========================= */}
 
       <div className="flex flex-col gap-2">
-        {messages.map((message) => (
-          <div
-            ref={(element) => {
-              messageRefs.current[message.id] = element;
-            }}
-            key={message.id}
-            onContextMenu={(event) =>
-              handleContextMenu(event, message)
-            }
-            onDoubleClick={() =>
-              onReply?.(message)
-            }
-            className={`
-              relative
-              rounded-3xl
-              transition-all
-              duration-700
-              ${
-                highlightedMessageId === message.id
-                  ? `
-                    bg-gray-600/20
-                    shadow-[0_0_40px_rgba(99,102,241,0.18)]
-                  `
-                  : ""
+
+        {messages.map((message) => {
+          const repliedMessage =
+            message.replyTo
+              ? messages.find(
+                  (msg) =>
+                    msg.id ===
+                    message.replyTo
+                )
+              : null;
+
+          return (
+            <div
+              key={message.id}
+              ref={(element) => {
+                messageRefs.current[
+                  message.id
+                ] = element;
+              }}
+              onContextMenu={(event) =>
+                handleContextMenu(
+                  event,
+                  message
+                )
               }
-            `}
-          >
-            <MessageBubble
-              message={message}
-              repliedMessage = {
-                message.replyTo 
-                  ? messages.find(
-                      (msg) => msg.id === message.replyTo
-                    ) 
-                  : null
+              onDoubleClick={() =>
+                onReply?.(message)
               }
-              onReplyClick = {handleReplyClick}
-              highlighted={
-                highlightedMessageId === message.id
-              }
-            />
-          </div>
-        ))}
+              className={`
+                relative
+                rounded-3xl
+                transition-all
+                duration-700
+
+                ${
+                  highlightedMessageId ===
+                  message.id
+                    ? `
+                      bg-gray-600/20
+                      shadow-[0_0_40px_rgba(99,102,241,0.18)]
+                    `
+                    : ""
+                }
+              `}
+            >
+
+              <MessageBubble
+                message={message}
+                repliedMessage={
+                  repliedMessage
+                }
+                onReplyClick={
+                  handleReplyClick
+                }
+                highlighted={
+                  highlightedMessageId ===
+                  message.id
+                }
+              />
+
+            </div>
+          );
+        })}
+
       </div>
 
+      {/* ========================= */}
       {/* Bottom Anchor */}
+      {/* ========================= */}
 
       <div ref={bottomRef} />
 
+      {/* ========================= */}
       {/* New Messages */}
+      {/* ========================= */}
 
       {newMessageCount > 0 && (
         <button
           type="button"
-          onClick={scrollToBottom}
+          onClick={
+            scrollToBottom
+          }
           className="
             sticky
             bottom-4
@@ -269,21 +364,56 @@ export default function MessageList({
           </span>
 
           {newMessageCount} new message
-          {newMessageCount > 1 ? "s" : ""}
+          {newMessageCount > 1
+            ? "s"
+            : ""}
         </button>
       )}
 
+      {/* ========================= */}
       {/* Context Menu */}
+      {/* ========================= */}
 
       {contextMenu && (
         <MessageContextMenu
-          message={contextMenu.message}
+          message={
+            contextMenu.message
+          }
+
           x={contextMenu.x}
           y={contextMenu.y}
-          onReply={onReply}
-          onClose={closeContextMenu}
+
+          onReply={(message) => {
+            onReply?.(message);
+            closeContextMenu();
+          }}
+
+          onCopy={(message) => {
+            onCopy?.(message);
+            closeContextMenu();
+          }}
+
+          onForward={(message) => {
+            onForward?.(message);
+            closeContextMenu();
+          }}
+
+          onDelete={(message) => {
+            onDelete?.(message);
+            closeContextMenu();
+          }}
+
+          onReaction={(message) => {
+            onReaction?.(message);
+            closeContextMenu();
+          }}
+
+          onClose={
+            closeContextMenu
+          }
         />
       )}
+
     </div>
   );
 }

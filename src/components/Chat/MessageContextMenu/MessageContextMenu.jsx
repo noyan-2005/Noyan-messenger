@@ -11,6 +11,7 @@ export default function MessageContextMenu({
   y,
   message,
   onReply,
+  onReaction,
   onCopy,
   onForward,
   onDelete,
@@ -20,10 +21,18 @@ export default function MessageContextMenu({
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(message.text);
+      if (message.text) {
+        await navigator.clipboard.writeText(
+          message.text
+        );
+      }
+
       onCopy?.(message);
     } catch (error) {
-      console.error("Failed to copy message:", error);
+      console.error(
+        "Failed to copy message:",
+        error
+      );
     }
 
     onClose();
@@ -49,8 +58,11 @@ export default function MessageContextMenu({
         left: x,
         top: y,
       }}
-      onClick={(event) => event.stopPropagation()}
+      onClick={(event) =>
+        event.stopPropagation()
+      }
     >
+      {/* Reply */}
       <button
         type="button"
         onClick={() => {
@@ -75,8 +87,13 @@ export default function MessageContextMenu({
         <span>Reply</span>
       </button>
 
+      {/* Reaction */}
       <button
         type="button"
+        onClick={() => {
+          onReaction?.(message);
+          onClose();
+        }}
         className="
           flex
           w-full
@@ -95,6 +112,7 @@ export default function MessageContextMenu({
         <span>Add Reaction</span>
       </button>
 
+      {/* Copy */}
       <button
         type="button"
         onClick={handleCopy}
@@ -116,6 +134,7 @@ export default function MessageContextMenu({
         <span>Copy</span>
       </button>
 
+      {/* Forward */}
       <button
         type="button"
         onClick={() => {
@@ -140,6 +159,7 @@ export default function MessageContextMenu({
         <span>Forward</span>
       </button>
 
+      {/* Delete */}
       {message.sender === "me" && (
         <>
           <div className="my-1 border-t border-gray-100" />

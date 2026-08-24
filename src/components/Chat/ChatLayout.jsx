@@ -46,19 +46,34 @@ export default function ChatLayout() {
   // Send Message
   // -----------------------------
 
-  const handleSendMessage = () => {
-    const text = message.trim();
+  const handleSendMessage = (messageData) => {
+    const text =
+      messageData?.text?.trim() || "";
 
-    if (!text) return;
+    const attachments =
+      messageData?.attachments || [];
+
+    if (
+      !text &&
+      attachments.length === 0
+    ) {
+      return;
+    }
 
     const newMessage = {
       id: Date.now(),
       sender: "me",
       text,
-      time: new Date().toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      }),
+      attachments,
+
+      time: new Date().toLocaleTimeString(
+        [],
+        {
+          hour: "2-digit",
+          minute: "2-digit",
+        }
+      ),
+
       status: "sending",
 
       replyTo: replyingTo
@@ -77,7 +92,6 @@ export default function ChatLayout() {
 
     setMessage("");
 
-    // بعد از ارسال، Reply Preview بسته شود
     setReplyingTo(null);
 
     // -----------------------------
@@ -134,6 +148,67 @@ export default function ChatLayout() {
         ),
       }));
     }, 2000);
+  };
+
+  // -----------------------------
+  // Reply
+  // -----------------------------
+
+  const handleReplyMessage = (message) => {
+    setReplyingTo(message);
+  };
+
+  // -----------------------------
+  // Delete Message
+  // -----------------------------
+
+  const handleDeleteMessage = (
+    message
+  ) => {
+    setMessages((prev) => ({
+      ...prev,
+
+      [activeChatId]: (
+        prev[activeChatId] || []
+      ).filter(
+        (msg) => msg.id !== message.id
+      ),
+    }));
+  };
+
+  // -----------------------------
+  // Copy Message
+  // -----------------------------
+
+  const handleCopyMessage = (message) => {
+    console.log(
+      "Message copied:",
+      message.id
+    );
+  };
+
+  // -----------------------------
+  // Forward Message
+  // -----------------------------
+
+  const handleForwardMessage = (
+    message
+  ) => {
+    console.log(
+      "Forward message:",
+      message
+    );
+  };
+
+  // -----------------------------
+  // Reaction
+  // -----------------------------
+
+  const handleReaction = (message) => {
+    console.log(
+      "Reaction:",
+      message
+    );
   };
 
   // -----------------------------
@@ -198,9 +273,15 @@ export default function ChatLayout() {
         <div className="relative z-50 min-h-0 flex-1">
           <MessageList
             messages={activeMessages}
-            onReply={(message) => {
-              setReplyingTo(message);
-            }}
+            onReply={handleReplyMessage}
+            onCopy={handleCopyMessage}
+            onForward={
+              handleForwardMessage
+            }
+            onDelete={
+              handleDeleteMessage
+            }
+            onReaction={handleReaction}
           />
         </div>
 
@@ -211,8 +292,13 @@ export default function ChatLayout() {
             value={message}
             onChange={setMessage}
             onSend={handleSendMessage}
+            onTyping={(value) => {
+              // Typing handler
+            }}
             replyingTo={replyingTo}
-            onCancelReply={() => setReplyingTo(null)}
+            onCancelReply={() =>
+              setReplyingTo(null)
+            }
           />
         </div>
 

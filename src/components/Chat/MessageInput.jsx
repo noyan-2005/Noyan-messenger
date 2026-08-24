@@ -9,6 +9,7 @@ import {
   UserRound,
   Music,
   Camera,
+  X,
 } from "lucide-react";
 
 import { useRef, useEffect, useState } from "react";
@@ -173,14 +174,7 @@ export default function MessageInput({
 
     // Send to parent
     onSend(messageData);
-
-    // Release preview URLs
-    attachments.forEach((attachment) => {
-      if (attachment.preview) {
-        URL.revokeObjectURL(attachment.preview);
-      }
-    });
-
+    
     // Clear attachments
     setAttachments([]);
 
@@ -318,8 +312,8 @@ export default function MessageInput({
             rounded-3xl
             border
             border-gray-200
-            bg-gray-50/90
-            p-2
+            bg-gray-50/30
+            p-1.5
             shadow-sm
             backdrop-blur-xl
           "
@@ -497,7 +491,7 @@ export default function MessageInput({
                       hover:bg-red-500
                     "
                   >
-                    ×
+                    <X size={17} />
                   </button>
                 </div>
               );
