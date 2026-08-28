@@ -23,6 +23,9 @@ export default function ChatLayout() {
 
   const [replyingTo, setReplyingTo] = useState(null);
 
+  const [isSidebarOpen, setIsSidebarOpen] =
+    useState(false);
+
   const activeChat = chats.find(
     (chat) => chat.id === activeChatId
   );
@@ -40,6 +43,9 @@ export default function ChatLayout() {
   const handleSelectChat = (chatId) => {
     setActiveChatId(chatId);
     setReplyingTo(null);
+
+    // Close mobile drawer
+    setIsSidebarOpen(false);
   };
 
   // -----------------------------
@@ -91,7 +97,6 @@ export default function ChatLayout() {
     }));
 
     setMessage("");
-
     setReplyingTo(null);
 
     // -----------------------------
@@ -177,7 +182,7 @@ export default function ChatLayout() {
   };
 
   // -----------------------------
-  // Copy Message
+  // Copy
   // -----------------------------
 
   const handleCopyMessage = (message) => {
@@ -188,7 +193,7 @@ export default function ChatLayout() {
   };
 
   // -----------------------------
-  // Forward Message
+  // Forward
   // -----------------------------
 
   const handleForwardMessage = (
@@ -232,15 +237,84 @@ export default function ChatLayout() {
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
 
-      {/* Sidebar */}
+      {/* ================================= */}
+      {/* Desktop Sidebar + Mobile Drawer */}
+      {/* ================================= */}
 
-      <ChatSidebar
-        chats={chats}
-        activeChatId={activeChatId}
-        onSelectChat={handleSelectChat}
-      />
+        <div
+          className={`
+            fixed
+            inset-0
+            z-[80]
+            md:relative
+            md:inset-auto
+            md:z-auto
+            ${
+              isSidebarOpen
+                ? "visible"
+                : "invisible md:visible"
+            }
+          `}
+        >
+          {/* Mobile Overlay */}
 
+          <div
+            onClick={() => setIsSidebarOpen(false)}
+            className={`
+              absolute
+              inset-0
+              bg-black/30
+              backdrop-blur-[2px]
+              transition-opacity
+              duration-300
+              ease-out
+              md:hidden
+
+              ${
+                isSidebarOpen
+                  ? "opacity-100"
+                  : "opacity-0"
+              }
+            `}
+          />
+
+          {/* Sidebar */}
+
+          <div
+            className={`
+              relative
+              z-10
+              h-full
+              w-[min(85vw,300px)]
+              shadow-2xl
+
+              transform
+              transition-transform
+              duration-300
+              ease-[cubic-bezier(0.22,1,0.36,1)]
+
+              ${
+                isSidebarOpen
+                  ? "translate-x-0"
+                  : "-translate-x-full"
+              }
+
+              md:w-auto
+              md:translate-x-0
+              md:shadow-none
+            `}
+          >
+            <ChatSidebar
+              chats={chats}
+              activeChatId={activeChatId}
+              onSelectChat={handleSelectChat}
+            />
+          </div>
+        </div>
+
+      {/* ================================= */}
       {/* Chat Area */}
+      {/* ================================= */}
 
       <main
         className="
@@ -265,6 +339,9 @@ export default function ChatLayout() {
           <ChatHeader
             chat={activeChat}
             isTyping={isTyping}
+            onMenuClick={() =>
+              setIsSidebarOpen(true)
+            }
           />
         </div>
 
@@ -273,15 +350,21 @@ export default function ChatLayout() {
         <div className="relative z-50 min-h-0 flex-1">
           <MessageList
             messages={activeMessages}
-            onReply={handleReplyMessage}
-            onCopy={handleCopyMessage}
+            onReply={
+              handleReplyMessage
+            }
+            onCopy={
+              handleCopyMessage
+            }
             onForward={
               handleForwardMessage
             }
             onDelete={
               handleDeleteMessage
             }
-            onReaction={handleReaction}
+            onReaction={
+              handleReaction
+            }
           />
         </div>
 
@@ -292,9 +375,7 @@ export default function ChatLayout() {
             value={message}
             onChange={setMessage}
             onSend={handleSendMessage}
-            onTyping={(value) => {
-              // Typing handler
-            }}
+            onTyping={() => {}}
             replyingTo={replyingTo}
             onCancelReply={() =>
               setReplyingTo(null)
@@ -307,13 +388,17 @@ export default function ChatLayout() {
         <button
           type="button"
           onClick={() =>
-            simulateTyping(activeChatId)
+            simulateTyping(
+              activeChatId
+            )
           }
           className="
             absolute
             bottom-44
             left-5
             z-50
+
+            hidden
             rounded-lg
             bg-indigo-600
             px-3
@@ -321,8 +406,11 @@ export default function ChatLayout() {
             text-xs
             text-white
             shadow-md
+
             transition
             hover:bg-indigo-700
+
+            md:block
           "
         >
           Simulate Typing
