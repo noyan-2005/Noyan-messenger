@@ -1,0 +1,156 @@
+from django.shortcuts import render
+from django.http import JsonResponse
+import json
+from .models import Message, Chat
+from django.contrib.auth.models import User
+from django.views.decorators.csrf import csrf_exempt
+
+
+
+def hello(request):
+    
+    name = request.GET.get("name")
+    return JsonResponse({
+        "message": f"Hello {name}!",
+        "status": "success"
+    })
+    
+    
+def receive_message(request): 
+    
+    try:
+        data = json.loads(request.body)
+        
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "error": "Invalid JSON"
+            },
+            status=400
+        )
+        
+    content = data.get("content")   
+    chat_id = data.get("chat")  
+    sender_id = data.get("sender")   
+    
+   
+    
+    if not content :
+        return JsonResponse(
+            {
+                "error": "content is required"
+            },
+            status = 400
+        )
+        
+    chat = Chat.objects.get(id=chat_id)
+    sender = User.objects.get(id=sender_id)
+    message = Message.objects.create(
+        chat = chat,
+        sender = sender,
+        content = content
+    )
+     
+    return JsonResponse(
+        {
+        "message": {
+                        "id": message.id,
+                        "sender": message.sender.username,
+                        "content": message.content,
+                        "chat": message.chat.id,
+                        "created_at": message.created_at,
+                        "updated_at": message.updated_at,
+                        "is_edited": message.is_edited,
+                    },
+        
+                    "status" : "success"
+        
+        },
+        status = 201              
+    )   
+    
+    
+def get_messages(request):
+    chat_id = request.GET.get("chat")
+    
+    if not chat_id :
+        return JsonResponse(
+            {
+              "error" : "chat is required"  
+            },
+            status = 400
+        )
+    
+    messages = Message.objects.filter(
+        chat = chat_id
+    )
+    
+    data = []
+
+    for message in messages:
+        data.append({
+            "id": message.id,
+            "sender": message.sender.username,
+            "content": message.content,
+            "created_at": message.created_at,
+            "chat": message.chat.id,
+            "updated_at": message.updated_at,
+            "is_edited": message.is_edited,
+        })
+    
+    return JsonResponse(data, safe = False)
+
+
+# register
+
+@csrf_exempt
+def register(request):
+    try:
+        data = json.loads(request.body)
+    
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "error": "Invalid JSON"
+            },
+            status = 400
+        )
+    
+    username = data.get("username")
+    password = data.get("password")
+    
+    if not username or not password :
+            return JsonResponse(
+                {
+                    "error": "username or password is required"
+                },
+                status = 400
+            )
+            
+    if User.objects.filter( username = username ).exists():
+        return JsonResponse(
+            {
+                "error": "username is unavailable"
+            },
+            status = 400
+        )
+        
+    # create user
+    
+    user = User.objects.create_user(
+        username = username,
+        password = password
+    )
+    
+    return JsonResponse(
+        {
+            "message" : "User created successfully",
+            "username" : user.username
+        },
+        status = 201
+    )
+    
+# login
+
+def user_login(request):
+    
