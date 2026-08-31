@@ -6,6 +6,7 @@ from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from .decorators import require_auth
+from django.views.decorators.http import require_http_methods
 
 
 def hello(request):
@@ -19,8 +20,9 @@ def hello(request):
 
 @csrf_exempt
 @require_auth
+@require_http_methods(["POST"])
 def receive_message(request):  
-      
+    
     try:
         data = json.loads(request.body)
         
@@ -90,6 +92,7 @@ def receive_message(request):
 
 
 @require_auth
+@require_http_methods(["GET"])
 def get_messages(request):
         
     chat_id = request.GET.get("chat")
@@ -150,6 +153,7 @@ def get_messages(request):
 # Register
 
 @csrf_exempt
+@require_http_methods(["POST"])
 def register(request):
     
     try:
@@ -201,6 +205,7 @@ def register(request):
 # Login
 
 @csrf_exempt
+@require_http_methods(["POST"])
 def user_login(request):
     
     try:
@@ -250,7 +255,7 @@ def user_login(request):
 
 
 # Current user
-
+@require_http_methods(["GET"])
 def me(request):
     
     return JsonResponse({
