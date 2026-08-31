@@ -7,6 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
 from .decorators import require_auth
 from django.views.decorators.http import require_http_methods
+import re
 
 
 def hello(request):
@@ -155,10 +156,10 @@ def get_messages(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def register(request):
-    
+
     try:
         data = json.loads(request.body)
-    
+
     except json.JSONDecodeError:
         return JsonResponse(
             {
@@ -166,18 +167,37 @@ def register(request):
             },
             status=400
         )
-    
+
     username = data.get("username")
     password = data.get("password")
-    
+
+    # Required fields
     if not username or not password:
         return JsonResponse(
             {
-                "error": "username or password is required"
+                "error": "username and password are required"
             },
             status=400
         )
-    
+
+    # Username validation
+    if not isinstance(username, str):
+        return JsonResponse(
+            {
+                "error": "username must be a string"
+            },
+            status=400
+        )
+
+    if not re.fullmatch(r"[A-Za-z0-9_]{3,30}", username):
+        return JsonResponse(
+            {
+                "error": "Username must be 3-30 characters and contain only letters, numbers, and underscores"
+            },
+            status=400
+        )
+
+    # Check username availability
     if User.objects.filter(username=username).exists():
         return JsonResponse(
             {
@@ -185,14 +205,13 @@ def register(request):
             },
             status=400
         )
-    
+
     # Create user
-    
     user = User.objects.create_user(
         username=username,
         password=password
     )
-    
+
     return JsonResponse(
         {
             "message": "User created successfully",
