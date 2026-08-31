@@ -8,6 +8,8 @@ from django.contrib.auth import authenticate, login
 from .decorators import require_auth
 from django.views.decorators.http import require_http_methods
 import re
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
 
 
 def hello(request):
@@ -206,6 +208,17 @@ def register(request):
             status=400
         )
 
+    try:
+        validate_password(password)
+
+    except ValidationError as e:
+        return JsonResponse(
+            {
+                "error": e.messages
+            },
+            status=400
+        )
+    
     # Create user
     user = User.objects.create_user(
         username=username,
