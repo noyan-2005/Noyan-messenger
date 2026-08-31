@@ -10,6 +10,7 @@ from django.views.decorators.http import require_http_methods
 import re
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
 
 
 def hello(request):
@@ -239,10 +240,10 @@ def register(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def user_login(request):
-    
+
     try:
         data = json.loads(request.body)
-        
+
     except json.JSONDecodeError:
         return JsonResponse(
             {
@@ -250,10 +251,10 @@ def user_login(request):
             },
             status=400
         )
-    
+
     username = data.get("username")
     password = data.get("password")
-    
+
     if not username or not password:
         return JsonResponse(
             {
@@ -261,22 +262,48 @@ def user_login(request):
             },
             status=400
         )
-    
+
+    # Rate limiting
+    ip = request.META.get("REMOTE_ADDR")
+    cache_key = f"login_attempts_{ip}"
+
+    attempts = cache.get(cache_key, 0)
+
+    if attempts >= 3:
+        return JsonResponse(
+            {
+                "error": "Too many login attempts. Try again later."
+            },
+            status=429
+        )
+
+    # Authenticate user
     user = authenticate(
         username=username,
         password=password
     )
-    
+
+    # Invalid login
     if user is None:
+
+        cache.set(
+            cache_key,
+            attempts + 1,
+            60
+        )
+
         return JsonResponse(
             {
                 "error": "Invalid username or password"
             },
             status=401
         )
-    
+
+    # Successful login
+    cache.delete(cache_key)
+
     login(request, user)
-    
+
     return JsonResponse(
         {
             "message": "Login successful",
@@ -284,7 +311,6 @@ def user_login(request):
         },
         status=200
     )
-
 
 # Current user
 @require_http_methods(["GET"])
