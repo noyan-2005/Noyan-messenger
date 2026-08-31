@@ -5,6 +5,7 @@ from .models import Message, Chat, ChatMember
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth import authenticate, login
+from .decorators import require_auth
 
 
 def hello(request):
@@ -17,8 +18,9 @@ def hello(request):
     })
 
 @csrf_exempt
-def receive_message(request):
-    
+@require_auth
+def receive_message(request):  
+      
     try:
         data = json.loads(request.body)
         
@@ -41,9 +43,18 @@ def receive_message(request):
             status=400
         )
         
-    chat = Chat.objects.get(id=chat_id)
-    sender = request.user
-    
+    chat = Chat.objects.filter(
+        id=chat_id
+    ).first()
+
+    if not chat:
+        return JsonResponse(
+            {
+                "error": "Chat not found"
+            },
+            status=404
+        )
+    sender = request.user    
     is_member = ChatMember.objects.filter(chat=chat, user=sender ).exists()
     
     if not is_member:
@@ -78,8 +89,9 @@ def receive_message(request):
     )
 
 
+@require_auth
 def get_messages(request):
-    
+        
     chat_id = request.GET.get("chat")
     
     if not chat_id:
@@ -90,6 +102,31 @@ def get_messages(request):
             status=400
         )
     
+    chat = Chat.objects.filter(
+       id = chat_id 
+    ).first()
+    
+    if not chat :
+        return JsonResponse(
+            {
+                "error" : "Chat not found"
+            },
+            status = 404
+        )
+    
+    is_member = ChatMember.objects.filter(
+        chat=chat,
+        user=request.user
+    ).exists()
+    
+    if not is_member:
+        return JsonResponse(
+            {
+                "error": "You are not a member of this chat"
+            },
+            status=403
+        )
+        
     messages = Message.objects.filter(
         chat=chat_id
     )
