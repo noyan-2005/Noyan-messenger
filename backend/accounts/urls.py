@@ -6,4 +6,6 @@ urlpatterns = [
     path ("message/", views.receive_message ),
     path ("messages/", views.get_messages ),
     path ("register/", views.register),
+    path("login/", views.user_login),
+    path("me/", views.me)
 ]
