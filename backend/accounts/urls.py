@@ -7,5 +7,7 @@ urlpatterns = [
     path ("messages/", views.get_messages ),
     path ("register/", views.register),
     path("login/", views.user_login),
-    path("me/", views.me)
+    path("me/", views.me),
+    path("csrf/", views.csrf_token),
+    path("logout/", views.user_logout)
 ]
