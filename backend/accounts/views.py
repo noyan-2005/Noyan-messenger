@@ -11,6 +11,7 @@ from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+from django.core.paginator import Paginator, EmptyPage
 
 from .decorators import require_auth
 from .models import Attachment, Chat, ChatMember, Message
@@ -588,7 +589,6 @@ def get_chats(request):
         status=200
     )
 
-
 # =========================================================
 # Get Chat Detail
 # =========================================================
@@ -602,7 +602,6 @@ def get_chat_detail(request, chat_id):
     ).first()
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -610,11 +609,12 @@ def get_chat_detail(request, chat_id):
             status=404
         )
 
-    if not is_chat_member(
-        chat,
-        request.user
-    ):
+    membership = ChatMember.objects.filter(
+        chat=chat,
+        user=request.user
+    ).first()
 
+    if not membership:
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -622,11 +622,29 @@ def get_chat_detail(request, chat_id):
             status=403
         )
 
+    members = ChatMember.objects.filter(
+        chat=chat
+    ).select_related(
+        "user"
+    ).order_by(
+        "joined_at"
+    )
+
     return JsonResponse(
         {
-            "chat": serialize_chat(chat),
+            "chat": {
+                "id": chat.id,
+                "type": chat.type,
+                "name": chat.name,
+                "created_at": chat.created_at,
+                "members": [
+                    serialize_chat_member(member)
+                    for member in members
+                ]
+            },
             "status": "success"
-        }
+        },
+        status=200
     )
 
 
@@ -1063,7 +1081,6 @@ def get_messages(request):
     chat_id = request.GET.get("chat")
 
     if not chat_id:
-
         return JsonResponse(
             {
                 "error": "chat is required"
@@ -1072,14 +1089,20 @@ def get_messages(request):
         )
 
     try:
-
         chat_id = int(chat_id)
 
     except (TypeError, ValueError):
-
         return JsonResponse(
             {
                 "error": "chat must be a valid integer"
+            },
+            status=400
+        )
+
+    if chat_id <= 0:
+        return JsonResponse(
+            {
+                "error": "chat must be a positive integer"
             },
             status=400
         )
@@ -1089,7 +1112,6 @@ def get_messages(request):
     ).first()
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -1097,11 +1119,12 @@ def get_messages(request):
             status=404
         )
 
-    if not is_chat_member(
-        chat,
-        request.user
-    ):
+    is_member = ChatMember.objects.filter(
+        chat=chat,
+        user=request.user
+    ).exists()
 
+    if not is_member:
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1109,27 +1132,109 @@ def get_messages(request):
             status=403
         )
 
+    # =====================================================
+    # Pagination
+    # =====================================================
+
+    try:
+        page = int(
+            request.GET.get("page", 1)
+        )
+
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "error": "page must be a valid integer"
+            },
+            status=400
+        )
+
+    try:
+        limit = int(
+            request.GET.get("limit", 50)
+        )
+
+    except (TypeError, ValueError):
+        return JsonResponse(
+            {
+                "error": "limit must be a valid integer"
+            },
+            status=400
+        )
+
+    if page <= 0:
+        return JsonResponse(
+            {
+                "error": "page must be a positive integer"
+            },
+            status=400
+        )
+
+    if limit <= 0:
+        return JsonResponse(
+            {
+                "error": "limit must be a positive integer"
+            },
+            status=400
+        )
+
+    # Prevent huge requests
+    MAX_LIMIT = 100
+
+    if limit > MAX_LIMIT:
+        limit = MAX_LIMIT
+
     messages = Message.objects.filter(
         chat=chat
     ).select_related(
-        "sender",
-        "chat"
-    ).prefetch_related(
-        "attachments"
+        "sender"
     ).order_by(
-        "created_at"
+        "-created_at"
     )
 
-    data = [
-        serialize_message(message)
-        for message in messages
-    ]
+    paginator = Paginator(
+        messages,
+        limit
+    )
+
+    try:
+        current_page = paginator.page(page)
+
+    except EmptyPage:
+        return JsonResponse(
+            {
+                "error": "Page does not exist"
+            },
+            status=404
+        )
+
+    data = []
+
+    for message in current_page.object_list:
+
+        data.append({
+            "id": message.id,
+            "sender": message.sender.username,
+            "content": message.content,
+            "created_at": message.created_at,
+            "chat": message.chat.id,
+            "updated_at": message.updated_at,
+            "is_edited": message.is_edited,
+        })
 
     return JsonResponse(
         {
             "messages": data,
+            "pagination": {
+                "page": current_page.number,
+                "limit": limit,
+                "total": paginator.count,
+                "has_next": current_page.has_next(),
+                "has_previous": current_page.has_previous(),
+            },
             "status": "success"
-        }
+        },
+        status=200
     )
 
 

@@ -49,6 +49,7 @@ urlpatterns = [
         views.get_chats
     ),
     
+    
     path(
         "chats/private/",
         views.create_private_chat
