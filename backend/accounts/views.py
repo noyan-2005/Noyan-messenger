@@ -14,7 +14,8 @@ from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator, EmptyPage
 
 from .decorators import require_auth
-from .models import Attachment, Chat, ChatMember, Message
+from django.utils import timezone
+from .models import Attachment, Chat, ChatMember, Message, MessageRead
 
 
 # =========================================================
@@ -1797,6 +1798,58 @@ def search_messages(request):
         status=200
     )
 
+# =========================================================
+# Mark Message As Read
+# =========================================================
+
+@require_auth
+@require_http_methods(["POST"])
+def mark_message_read(request, message_id):
+
+    message = Message.objects.filter(
+        id=message_id
+    ).select_related(
+        "chat"
+    ).first()
+
+    if not message:
+
+        return JsonResponse(
+            {
+                "error": "Message not found"
+            },
+            status=404
+        )
+
+    if not is_chat_member(
+        message.chat,
+        request.user
+    ):
+
+        return JsonResponse(
+            {
+                "error": "You are not a member of this chat"
+            },
+            status=403
+        )
+
+    read, created = MessageRead.objects.update_or_create(
+        message=message,
+        user=request.user,
+        defaults={
+            "read_at": timezone.now()
+        }
+    )
+
+    return JsonResponse(
+        {
+            "message_id": message.id,
+            "read": True,
+            "read_at": read.read_at,
+            "status": "success"
+        },
+        status=201 if created else 200
+    )
 
 # =========================================================
 # Upload Attachment

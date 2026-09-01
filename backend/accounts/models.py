@@ -100,7 +100,42 @@ class Message(models.Model):
         related_name="replies"
     )
 
+class MessageRead(models.Model):
 
+    message = models.ForeignKey(
+        Message,
+        on_delete=models.CASCADE,
+        related_name="reads"
+    )
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="message_reads"
+    )
+
+    read_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    class Meta:
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["message", "user"],
+                name="unique_message_read"
+            )
+        ]
+
+        indexes = [
+            models.Index(
+                fields=["user", "message"]
+            ),
+        ]
+
+    def __str__(self):
+
+        return f"{self.user.username} read message {self.message.id}"
 class Attachment(models.Model):
 
     FILE_TYPES = [
