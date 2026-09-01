@@ -9,5 +9,7 @@ urlpatterns = [
     path("login/", views.user_login),
     path("me/", views.me),
     path("csrf/", views.csrf_token),
-    path("logout/", views.user_logout)
+    path("logout/", views.user_logout),
+    path("chats/", views.create_chat),
+    path("chats/add-member/", views.add_chat_member),
 ]

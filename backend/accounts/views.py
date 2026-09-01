@@ -7,6 +7,7 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
@@ -30,6 +31,20 @@ def hello(request):
 
 
 # =========================================================
+# CSRF Token
+# =========================================================
+
+@require_http_methods(["GET"])
+def csrf_token(request):
+
+    token = get_token(request)
+
+    return JsonResponse({
+        "csrfToken": token
+    })
+
+
+# =========================================================
 # Receive Message
 # =========================================================
 
@@ -37,10 +52,6 @@ def hello(request):
 @require_auth
 @require_http_methods(["POST"])
 def receive_message(request):
-
-    # -----------------------------------------------------
-    # Parse JSON
-    # -----------------------------------------------------
 
     try:
         data = json.loads(request.body)
@@ -53,7 +64,6 @@ def receive_message(request):
             status=400
         )
 
-    # JSON body must be an object
     if not isinstance(data, dict):
         return JsonResponse(
             {
@@ -62,16 +72,8 @@ def receive_message(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Get fields
-    # -----------------------------------------------------
-
     content = data.get("content")
     chat_id = data.get("chat")
-
-    # -----------------------------------------------------
-    # Validate content type
-    # -----------------------------------------------------
 
     if not isinstance(content, str):
         return JsonResponse(
@@ -81,12 +83,7 @@ def receive_message(request):
             status=400
         )
 
-    # Remove unnecessary spaces
     content = content.strip()
-
-    # -----------------------------------------------------
-    # Validate empty content
-    # -----------------------------------------------------
 
     if not content:
         return JsonResponse(
@@ -96,23 +93,18 @@ def receive_message(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Validate message length
-    # -----------------------------------------------------
-
     MAX_MESSAGE_LENGTH = 4000
 
     if len(content) > MAX_MESSAGE_LENGTH:
         return JsonResponse(
             {
-                "error": f"content must not exceed {MAX_MESSAGE_LENGTH} characters"
+                "error": (
+                    f"content must not exceed "
+                    f"{MAX_MESSAGE_LENGTH} characters"
+                )
             },
             status=400
         )
-
-    # -----------------------------------------------------
-    # Validate chat ID
-    # -----------------------------------------------------
 
     if chat_id is None:
         return JsonResponse(
@@ -141,10 +133,6 @@ def receive_message(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Find chat
-    # -----------------------------------------------------
-
     chat = Chat.objects.filter(
         id=chat_id
     ).first()
@@ -156,10 +144,6 @@ def receive_message(request):
             },
             status=404
         )
-
-    # -----------------------------------------------------
-    # Check membership
-    # -----------------------------------------------------
 
     sender = request.user
 
@@ -176,19 +160,11 @@ def receive_message(request):
             status=403
         )
 
-    # -----------------------------------------------------
-    # Create message
-    # -----------------------------------------------------
-
     message = Message.objects.create(
         chat=chat,
         sender=sender,
         content=content
     )
-
-    # -----------------------------------------------------
-    # Response
-    # -----------------------------------------------------
 
     return JsonResponse(
         {
@@ -218,10 +194,6 @@ def get_messages(request):
 
     chat_id = request.GET.get("chat")
 
-    # -----------------------------------------------------
-    # Validate chat ID
-    # -----------------------------------------------------
-
     if not chat_id:
         return JsonResponse(
             {
@@ -249,10 +221,6 @@ def get_messages(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Find chat
-    # -----------------------------------------------------
-
     chat = Chat.objects.filter(
         id=chat_id
     ).first()
@@ -264,10 +232,6 @@ def get_messages(request):
             },
             status=404
         )
-
-    # -----------------------------------------------------
-    # Check membership
-    # -----------------------------------------------------
 
     is_member = ChatMember.objects.filter(
         chat=chat,
@@ -281,10 +245,6 @@ def get_messages(request):
             },
             status=403
         )
-
-    # -----------------------------------------------------
-    # Get messages
-    # -----------------------------------------------------
 
     messages = Message.objects.filter(
         chat=chat
@@ -322,10 +282,6 @@ def get_messages(request):
 @require_http_methods(["POST"])
 def register(request):
 
-    # -----------------------------------------------------
-    # Parse JSON
-    # -----------------------------------------------------
-
     try:
         data = json.loads(request.body)
 
@@ -345,16 +301,8 @@ def register(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Get fields
-    # -----------------------------------------------------
-
     username = data.get("username")
     password = data.get("password")
-
-    # -----------------------------------------------------
-    # Required fields
-    # -----------------------------------------------------
 
     if not username or not password:
         return JsonResponse(
@@ -363,10 +311,6 @@ def register(request):
             },
             status=400
         )
-
-    # -----------------------------------------------------
-    # Username validation
-    # -----------------------------------------------------
 
     if not isinstance(username, str):
         return JsonResponse(
@@ -393,10 +337,6 @@ def register(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Check username availability
-    # -----------------------------------------------------
-
     if User.objects.filter(
         username=username
     ).exists():
@@ -408,10 +348,6 @@ def register(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Validate password
-    # -----------------------------------------------------
-
     try:
         validate_password(password)
 
@@ -422,10 +358,6 @@ def register(request):
             },
             status=400
         )
-
-    # -----------------------------------------------------
-    # Create user
-    # -----------------------------------------------------
 
     user = User.objects.create_user(
         username=username,
@@ -449,10 +381,6 @@ def register(request):
 @require_http_methods(["POST"])
 def user_login(request):
 
-    # -----------------------------------------------------
-    # Parse JSON
-    # -----------------------------------------------------
-
     try:
         data = json.loads(request.body)
 
@@ -472,10 +400,6 @@ def user_login(request):
             status=400
         )
 
-    # -----------------------------------------------------
-    # Get fields
-    # -----------------------------------------------------
-
     username = data.get("username")
     password = data.get("password")
 
@@ -486,10 +410,6 @@ def user_login(request):
             },
             status=400
         )
-
-    # -----------------------------------------------------
-    # Rate limiting
-    # -----------------------------------------------------
 
     ip = request.META.get(
         "REMOTE_ADDR",
@@ -514,10 +434,6 @@ def user_login(request):
             status=429
         )
 
-    # -----------------------------------------------------
-    # Authenticate
-    # -----------------------------------------------------
-
     user = authenticate(
         username=username,
         password=password
@@ -537,10 +453,6 @@ def user_login(request):
             },
             status=401
         )
-
-    # -----------------------------------------------------
-    # Successful login
-    # -----------------------------------------------------
 
     cache.delete(cache_key)
 
@@ -588,4 +500,173 @@ def me(request):
         {
             "username": request.user.username
         }
+    )
+
+# =========================================================
+# Create Chat
+# =========================================================
+
+@csrf_exempt
+@require_auth
+@require_http_methods(["POST"])
+def create_chat(request):
+    
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "error" : "Invalid JSON"
+            },
+            status = 400
+        )
+        
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {
+                "error" : "Request body must be a JSON object"
+            },
+            status = 400
+        )
+    
+    chat_type = data.get("type")
+    
+    if chat_type not in ["private", "group"]:
+        return JsonResponse(
+            {
+                "error" : "type must be private or group"
+            },
+            status = 400
+        )    
+    
+    # Create chat
+    chat = Chat.objects.create(
+        type = chat_type
+    )
+    
+    # Automatically add creator as member
+    ChatMember.objects.create(
+        chat = chat,
+        user = request.user
+    )
+    
+    return JsonResponse(
+        {
+            "chat":{
+                "id": chat.id,
+                "type": chat.type,
+                "created_at": chat.created_at
+            },
+            "status" : "success"
+        },
+        status = 201
+    )
+    
+# =========================================================
+# Add Chat Member
+# =========================================================
+
+@csrf_exempt
+@require_auth
+@require_http_methods(["POST"])
+def add_chat_member(request):
+
+    try:
+        data = json.loads(request.body)
+
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "error": "Invalid JSON"
+            },
+            status=400
+        )
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {
+                "error": "Request body must be a JSON object"
+            },
+            status=400
+        )
+
+    chat_id = data.get("chat")
+    username = data.get("username")
+
+    # Validate fields
+    if not chat_id or not username:
+        return JsonResponse(
+            {
+                "error": "chat and username are required"
+            },
+            status=400
+        )
+
+    # Find chat
+    chat = Chat.objects.filter(
+        id=chat_id
+    ).first()
+
+    if not chat:
+        return JsonResponse(
+            {
+                "error": "Chat not found"
+            },
+            status=404
+        )
+
+    # Check that requester is a member
+    is_member = ChatMember.objects.filter(
+        chat=chat,
+        user=request.user
+    ).exists()
+
+    if not is_member:
+        return JsonResponse(
+            {
+                "error": "You are not a member of this chat"
+            },
+            status=403
+        )
+
+    # Find user
+    user = User.objects.filter(
+        username=username
+    ).first()
+
+    if not user:
+        return JsonResponse(
+            {
+                "error": "User not found"
+            },
+            status=404
+        )
+
+    # Check if already a member
+    if ChatMember.objects.filter(
+        chat=chat,
+        user=user
+    ).exists():
+
+        return JsonResponse(
+            {
+                "error": "User is already a member of this chat"
+            },
+            status=400
+        )
+
+    # Add member
+    ChatMember.objects.create(
+        chat=chat,
+        user=user
+    )
+
+    return JsonResponse(
+        {
+            "message": "User added successfully",
+            "chat": chat.id,
+            "username": user.username,
+            "status": "success"
+        },
+        status=201
     )
