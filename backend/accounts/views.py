@@ -1660,6 +1660,143 @@ def forward_message(request, message_id):
         status=201
     )
 
+# =========================================================
+# Search Messages
+# =========================================================
+
+@require_auth
+@require_http_methods(["GET"])
+def search_messages(request):
+
+    query = request.GET.get(
+        "q",
+        ""
+    ).strip()
+
+    chat_id = request.GET.get("chat")
+
+    # =====================================================
+    # Validate Query
+    # =====================================================
+
+    if not query:
+
+        return JsonResponse(
+            {
+                "error": "q is required"
+            },
+            status=400
+        )
+
+    if len(query) > 100:
+
+        return JsonResponse(
+            {
+                "error": "q must not exceed 100 characters"
+            },
+            status=400
+        )
+
+    # =====================================================
+    # Base Query
+    # =====================================================
+
+    messages = Message.objects.filter(
+        content__icontains=query,
+        is_deleted=False,
+        chat__memberships__user=request.user
+    ).select_related(
+        "sender",
+        "chat",
+        "reply_to",
+        "reply_to__sender"
+    ).prefetch_related(
+        "attachments",
+        "reply_to__attachments"
+    ).order_by(
+        "-created_at"
+    )
+
+    # =====================================================
+    # Optional Chat Filter
+    # =====================================================
+    if chat_id is not None:
+
+        try:
+            chat_id = int(chat_id)
+
+        except (TypeError, ValueError):
+
+            return JsonResponse(
+                {
+                    "error": "chat must be a valid integer"
+                },
+                status=400
+            )
+
+        if chat_id <= 0:
+
+            return JsonResponse(
+                {
+                    "error": "chat must be a positive integer"
+                },
+                status=400
+            )
+
+        chat = Chat.objects.filter(
+            id=chat_id
+        ).first()
+
+        if not chat:
+
+            return JsonResponse(
+                {
+                    "error": "Chat not found"
+                },
+                status=404
+            )
+
+        if not is_chat_member(
+            chat,
+            request.user
+        ):
+
+            return JsonResponse(
+                {
+                    "error": "You are not a member of this chat"
+                },
+                status=403
+            )
+
+        messages = messages.filter(
+            chat_id=chat_id
+        )
+
+    # =====================================================
+    # Limit Results
+    # =====================================================
+
+    messages = messages[:20]
+
+    # =====================================================
+    # Serialize
+    # =====================================================
+
+    data = [
+        serialize_message(message)
+        for message in messages
+    ]
+
+    return JsonResponse(
+        {
+            "messages": data,
+            "query": query,
+            "count": len(data),
+            "status": "success"
+        },
+        status=200
+    )
+
 
 # =========================================================
 # Upload Attachment

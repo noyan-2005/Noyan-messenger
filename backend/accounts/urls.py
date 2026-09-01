@@ -109,6 +109,11 @@ urlpatterns = [
         "messages/<int:message_id>/delete/",
         views.delete_message
     ),
+    
+    path(
+        "messages/search/",
+        views.search_messages
+    ),
 
     # Attachments
     path(
