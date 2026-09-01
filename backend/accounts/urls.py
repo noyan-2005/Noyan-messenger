@@ -79,6 +79,10 @@ urlpatterns = [
         "chats/<int:chat_id>/members/<int:user_id>/",
         views.remove_chat_member
     ),
+    path(
+        "messages/<int:message_id>/forward/",
+        views.forward_message
+    ),
 
     path(
         "chats/<int:chat_id>/leave/",

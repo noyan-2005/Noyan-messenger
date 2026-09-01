@@ -91,6 +91,14 @@ class Message(models.Model):
     is_deleted = models.BooleanField(
         default=False
     )
+    
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies"
+    )
 
 
 class Attachment(models.Model):

@@ -68,11 +68,9 @@ def serialize_chat_member(membership):
 def serialize_message(message):
 
     if message.is_deleted:
-
         content = "This message was deleted."
 
     else:
-
         content = message.content
 
     return {
@@ -93,6 +91,19 @@ def serialize_message(message):
             }
             for attachment in message.attachments.all()
         ],
+        "reply_to": (
+            {
+                "id": message.reply_to.id,
+                "sender": message.reply_to.sender.username,
+                "content": (
+                    "This message was deleted."
+                    if message.reply_to.is_deleted
+                    else message.reply_to.content
+                )
+            }
+            if message.reply_to
+            else None
+        ),
     }
 
 
@@ -978,6 +989,11 @@ def receive_message(request):
 
     content = data.get("content")
     chat_id = data.get("chat")
+    reply_to_id = data.get("reply_to")
+
+    # =====================================================
+    # Validate Content
+    # =====================================================
 
     if not isinstance(content, str):
 
@@ -1008,6 +1024,10 @@ def receive_message(request):
             status=400
         )
 
+    # =====================================================
+    # Validate Chat ID
+    # =====================================================
+
     try:
 
         chat_id = int(chat_id)
@@ -1030,6 +1050,10 @@ def receive_message(request):
             status=400
         )
 
+    # =====================================================
+    # Find Chat
+    # =====================================================
+
     chat = Chat.objects.filter(
         id=chat_id
     ).first()
@@ -1043,6 +1067,10 @@ def receive_message(request):
             status=404
         )
 
+    # =====================================================
+    # Check Membership
+    # =====================================================
+
     if not is_chat_member(
         chat,
         request.user
@@ -1055,10 +1083,59 @@ def receive_message(request):
             status=403
         )
 
+    # =====================================================
+    # Validate Reply Message
+    # =====================================================
+
+    reply_to = None
+
+    if reply_to_id is not None:
+
+        try:
+
+            reply_to_id = int(reply_to_id)
+
+        except (TypeError, ValueError):
+
+            return JsonResponse(
+                {
+                    "error": "reply_to must be a valid integer"
+                },
+                status=400
+            )
+
+        if reply_to_id <= 0:
+
+            return JsonResponse(
+                {
+                    "error": "reply_to must be a positive integer"
+                },
+                status=400
+            )
+
+        reply_to = Message.objects.filter(
+            id=reply_to_id,
+            chat=chat
+        ).first()
+
+        if not reply_to:
+
+            return JsonResponse(
+                {
+                    "error": "Reply message not found in this chat"
+                },
+                status=404
+            )
+
+    # =====================================================
+    # Create Message
+    # =====================================================
+
     message = Message.objects.create(
         chat=chat,
         sender=request.user,
-        content=content
+        content=content,
+        reply_to=reply_to,
     )
 
     return JsonResponse(
@@ -1068,6 +1145,7 @@ def receive_message(request):
         },
         status=201
     )
+
 
 
 # =========================================================
@@ -1187,7 +1265,12 @@ def get_messages(request):
     messages = Message.objects.filter(
         chat=chat
     ).select_related(
-        "sender"
+        "sender",
+        "chat",
+        "reply_to",
+        "reply_to__sender"
+    ).prefetch_related(
+        "attachments"
     ).order_by(
         "-created_at"
     )
@@ -1212,15 +1295,10 @@ def get_messages(request):
 
     for message in current_page.object_list:
 
-        data.append({
-            "id": message.id,
-            "sender": message.sender.username,
-            "content": message.content,
-            "created_at": message.created_at,
-            "chat": message.chat.id,
-            "updated_at": message.updated_at,
-            "is_edited": message.is_edited,
-        })
+        data = [
+            serialize_message(message)
+            for message in current_page.object_list
+        ]
 
     return JsonResponse(
         {
@@ -1418,6 +1496,168 @@ def delete_message(request, message_id):
             "message": "Message deleted successfully",
             "status": "success"
         }
+    )
+
+# =========================================================
+# Forward Message
+# =========================================================
+
+@csrf_exempt
+@require_auth
+@require_http_methods(["POST"])
+def forward_message(request, message_id):
+
+    data, error = parse_json_body(request)
+
+    if error:
+        return error
+
+    target_chat_id = data.get("chat")
+
+    if target_chat_id is None:
+
+        return JsonResponse(
+            {
+                "error": "chat is required"
+            },
+            status=400
+        )
+
+    try:
+
+        target_chat_id = int(target_chat_id)
+
+    except (TypeError, ValueError):
+
+        return JsonResponse(
+            {
+                "error": "chat must be a valid integer"
+            },
+            status=400
+        )
+
+    if target_chat_id <= 0:
+
+        return JsonResponse(
+            {
+                "error": "chat must be a positive integer"
+            },
+            status=400
+        )
+
+    # =====================================================
+    # Find Original Message
+    # =====================================================
+
+    message = Message.objects.filter(
+        id=message_id
+    ).select_related(
+        "chat",
+        "sender"
+    ).prefetch_related(
+        "attachments"
+    ).first()
+
+    if not message:
+
+        return JsonResponse(
+            {
+                "error": "Message not found"
+            },
+            status=404
+        )
+
+    # =====================================================
+    # Check Source Chat Membership
+    # =====================================================
+
+    if not is_chat_member(
+        message.chat,
+        request.user
+    ):
+
+        return JsonResponse(
+            {
+                "error": "You are not a member of the source chat"
+            },
+            status=403
+        )
+
+    # =====================================================
+    # Deleted Messages Cannot Be Forwarded
+    # =====================================================
+
+    if message.is_deleted:
+
+        return JsonResponse(
+            {
+                "error": "Deleted messages cannot be forwarded"
+            },
+            status=400
+        )
+
+    # =====================================================
+    # Find Target Chat
+    # =====================================================
+
+    target_chat = Chat.objects.filter(
+        id=target_chat_id
+    ).first()
+
+    if not target_chat:
+
+        return JsonResponse(
+            {
+                "error": "Target chat not found"
+            },
+            status=404
+        )
+
+    # =====================================================
+    # Check Target Chat Membership
+    # =====================================================
+
+    if not is_chat_member(
+        target_chat,
+        request.user
+    ):
+
+        return JsonResponse(
+            {
+                "error": "You are not a member of the target chat"
+            },
+            status=403
+        )
+
+    # =====================================================
+    # Create Forwarded Message
+    # =====================================================
+
+    with transaction.atomic():
+
+        forwarded_message = Message.objects.create(
+            chat=target_chat,
+            sender=request.user,
+            content=message.content
+        )
+
+        # Copy attachments
+        for attachment in message.attachments.all():
+
+            Attachment.objects.create(
+                message=forwarded_message,
+                file=attachment.file,
+                file_type=attachment.file_type
+            )
+
+    return JsonResponse(
+        {
+            "message": serialize_message(
+                forwarded_message
+            ),
+            "status": "success"
+        },
+        status=201
     )
 
 
