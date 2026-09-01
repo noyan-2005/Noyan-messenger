@@ -51,9 +51,18 @@ def serialize_chat(chat):
     return {
         "id": chat.id,
         "type": chat.type,
+        "name": chat.name,
         "created_at": chat.created_at,
     }
 
+def serialize_chat_member(membership):
+
+    return {
+        "id": membership.user.id,
+        "username": membership.user.username,
+        "role": membership.role,
+        "joined_at": membership.joined_at
+    }
 
 def serialize_message(message):
 
@@ -395,14 +404,38 @@ def create_chat(request):
 
     chat_type = data.get("type")
 
-    if chat_type not in [
-        "private",
-        "group"
-    ]:
-
+    if chat_type != "group":
         return JsonResponse(
             {
-                "error": "type must be private or group"
+                "error": "type must be group"
+            },
+            status=400
+        )
+
+    name = data.get("name")
+
+    if not isinstance(name, str):
+        return JsonResponse(
+            {
+                "error": "name must be a string"
+            },
+            status=400
+        )
+
+    name = name.strip()
+
+    if not name:
+        return JsonResponse(
+            {
+                "error": "name is required"
+            },
+            status=400
+        )
+
+    if len(name) > 100:
+        return JsonResponse(
+            {
+                "error": "name must not exceed 100 characters"
             },
             status=400
         )
@@ -410,13 +443,14 @@ def create_chat(request):
     with transaction.atomic():
 
         chat = Chat.objects.create(
-            type=chat_type
+            type="group",
+            name=name
         )
 
         ChatMember.objects.create(
             chat=chat,
             user=request.user,
-            role = "admin"
+            role="admin"
         )
 
     return JsonResponse(
