@@ -12,6 +12,9 @@ export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
+  const [isLoading, setIsLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+
   // Resend timer
   const [resendTimer, setResendTimer] = useState(60);
 
@@ -68,6 +71,44 @@ export default function Login() {
     setResendTimer(60);
     setLoginMode("phone");
   };
+
+  const handleLogin = async () => {
+    setLoginError("");
+    setIsLoading(true);
+
+    try {
+        const response = await fetch(
+        "http://127.0.0.1:8000/api/accounts/login/",
+        {
+            method: "POST",
+            headers: {
+            "Content-Type": "application/json",
+            },
+            credentials: "include",
+            body: JSON.stringify({
+            username,
+            password,
+            }),
+        }
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+        setLoginError(data.error || "Login failed");
+        return;
+        }
+
+        console.log("Login successful:", data);
+
+    } catch (error) {
+        console.error(error);
+        setLoginError("Unable to connect to the server");
+
+    } finally {
+        setIsLoading(false);
+    }
+    };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
@@ -300,21 +341,31 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
               />
 
+              {loginError && (
+                <p className="text-center text-sm text-red-500">
+                    {loginError}
+                </p>
+               )}
+
               <button
+                onClick={handleLogin}
+                disabled={isLoading}
                 className="
-                  w-full
-                  cursor-pointer
-                  rounded-xl
-                  bg-violet-600
-                  py-3
-                  font-medium
-                  text-white
-                  transition
-                  hover:bg-violet-700
+                    w-full
+                    cursor-pointer
+                    rounded-xl
+                    bg-violet-600
+                    py-3
+                    font-medium
+                    text-white
+                    transition
+                    hover:bg-violet-700
+                    disabled:cursor-not-allowed
+                    disabled:opacity-50
                 "
-              >
-                Login
-              </button>
+                >
+                {isLoading ? "Logging in..." : "Login"}
+                </button>
 
               <button
                 onClick={() => setLoginMode("phone")}
