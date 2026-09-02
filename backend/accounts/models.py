@@ -1,5 +1,5 @@
-from django.db import models
 from django.contrib.auth.models import User
+from django.db import models
 
 
 class Chat(models.Model):
@@ -11,18 +11,29 @@ class Chat(models.Model):
 
     type = models.CharField(
         max_length=20,
-        choices=CHAT_TYPES
+        choices=CHAT_TYPES,
     )
 
-    created_at = models.DateTimeField(
-        auto_now_add=True
-    )
-    
     name = models.CharField(
         max_length=100,
         blank=True,
-        null=True
+        null=True,
     )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["type", "-created_at"]
+            ),
+        ]
+
+    def __str__(self):
+        return self.name or f"Chat {self.id}"
+
 
 class ChatMember(models.Model):
 
@@ -34,108 +45,147 @@ class ChatMember(models.Model):
     chat = models.ForeignKey(
         Chat,
         on_delete=models.CASCADE,
-        related_name="memberships"
+        related_name="memberships",
     )
 
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="chat_memberships"
+        related_name="chat_memberships",
     )
 
     role = models.CharField(
         max_length=20,
         choices=ROLE_CHOICES,
-        default="member"
+        default="member",
     )
 
     joined_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
                 fields=["user", "chat"],
-                name="unique_user_chat"
-            )
+                name="unique_user_chat",
+            ),
         ]
+
+        indexes = [
+            models.Index(
+                fields=["user", "-joined_at"]
+            ),
+            models.Index(
+                fields=["chat", "role"]
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} - {self.chat_id}"
+
+
 class Message(models.Model):
 
     chat = models.ForeignKey(
         Chat,
         on_delete=models.CASCADE,
-        related_name="messages"
+        related_name="messages",
     )
 
     sender = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="sent_messages"
+        related_name="sent_messages",
     )
 
     content = models.TextField()
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
 
     updated_at = models.DateTimeField(
-        auto_now=True
+        auto_now=True,
     )
 
     is_edited = models.BooleanField(
-        default=False
+        default=False,
     )
 
     is_deleted = models.BooleanField(
-        default=False
+        default=False,
     )
-    
+
     reply_to = models.ForeignKey(
         "self",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="replies"
+        related_name="replies",
     )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(
+                fields=["chat", "-created_at"]
+            ),
+            models.Index(
+                fields=["sender", "-created_at"]
+            ),
+            models.Index(
+                fields=["chat", "is_deleted", "-created_at"]
+            ),
+        ]
+
+    def __str__(self):
+        return f"Message {self.id} in Chat {self.chat_id}"
+
 
 class MessageRead(models.Model):
 
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
-        related_name="reads"
+        related_name="reads",
     )
 
     user = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name="message_reads"
+        related_name="message_reads",
     )
 
     read_at = models.DateTimeField(
-        auto_now=True
+        auto_now=True,
     )
 
     class Meta:
-
         constraints = [
             models.UniqueConstraint(
                 fields=["message", "user"],
-                name="unique_message_read"
-            )
+                name="unique_message_read",
+            ),
         ]
 
         indexes = [
             models.Index(
                 fields=["user", "message"]
             ),
+            models.Index(
+                fields=["message", "-read_at"]
+            ),
         ]
 
     def __str__(self):
+        return (
+            f"{self.user.username} "
+            f"read message {self.message.id}"
+        )
 
-        return f"{self.user.username} read message {self.message.id}"
+
 class Attachment(models.Model):
 
     FILE_TYPES = [
@@ -148,18 +198,28 @@ class Attachment(models.Model):
     message = models.ForeignKey(
         Message,
         on_delete=models.CASCADE,
-        related_name="attachments"
+        related_name="attachments",
     )
 
     file = models.FileField(
-        upload_to="attachments/"
+        upload_to="attachments/",
     )
 
     file_type = models.CharField(
         max_length=20,
-        choices=FILE_TYPES
+        choices=FILE_TYPES,
     )
 
     created_at = models.DateTimeField(
-        auto_now_add=True
+        auto_now_add=True,
     )
+
+    class Meta:
+        indexes = [
+            models.Index(
+                fields=["message", "-created_at"]
+            ),
+        ]
+
+    def __str__(self):
+        return f"Attachment {self.id} - {self.file_type}"

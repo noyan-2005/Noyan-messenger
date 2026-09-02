@@ -1,21 +1,48 @@
 import json
 import re
 
+from functools import wraps
+
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
+from django.core.paginator import Paginator, EmptyPage
 from django.db import transaction
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from django.core.paginator import Paginator, EmptyPage
 
 from .decorators import require_auth
-from django.utils import timezone
-from .models import Attachment, Chat, ChatMember, Message, MessageRead
+from .models import (
+    Attachment,
+    Chat,
+    ChatMember,
+    Message,
+    MessageRead,
+)
+
+
+# =========================================================
+# Constants
+# =========================================================
+
+MAX_MESSAGE_LENGTH = 4000
+MAX_SEARCH_LENGTH = 100
+MAX_MESSAGE_LIMIT = 100
+DEFAULT_MESSAGE_LIMIT = 50
+MAX_SEARCH_RESULTS = 20
+MAX_FILE_SIZE = 10 * 1024 * 1024
+
+ALLOWED_FILE_TYPES = {
+    "image",
+    "video",
+    "audio",
+    "file",
+}
 
 
 # =========================================================
@@ -23,12 +50,14 @@ from .models import Attachment, Chat, ChatMember, Message, MessageRead
 # =========================================================
 
 def parse_json_body(request):
+    """
+    Parse request.body as a JSON object.
+    """
 
     try:
         data = json.loads(request.body)
 
     except json.JSONDecodeError:
-
         return None, JsonResponse(
             {
                 "error": "Invalid JSON"
@@ -37,7 +66,6 @@ def parse_json_body(request):
         )
 
     if not isinstance(data, dict):
-
         return None, JsonResponse(
             {
                 "error": "Request body must be a JSON object"
@@ -48,8 +76,66 @@ def parse_json_body(request):
     return data, None
 
 
-def serialize_chat(chat):
+def get_chat(chat_id):
+    """
+    Return a chat by ID or None.
+    """
 
+    return Chat.objects.filter(
+        id=chat_id
+    ).first()
+
+
+def get_message(message_id):
+    """
+    Return a message with commonly required relations.
+    """
+
+    return (
+        Message.objects
+        .select_related(
+            "sender",
+            "chat",
+            "reply_to",
+            "reply_to__sender",
+        )
+        .prefetch_related(
+            "attachments",
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
+
+
+def is_chat_member(chat, user):
+    """
+    Check whether a user belongs to a chat.
+    """
+
+    return ChatMember.objects.filter(
+        chat=chat,
+        user=user
+    ).exists()
+
+
+def get_chat_membership(chat, user):
+    """
+    Return user's membership in a chat.
+    """
+
+    return (
+        ChatMember.objects
+        .filter(
+            chat=chat,
+            user=user
+        )
+        .first()
+    )
+
+
+def serialize_chat(chat):
     return {
         "id": chat.id,
         "type": chat.type,
@@ -57,22 +143,47 @@ def serialize_chat(chat):
         "created_at": chat.created_at,
     }
 
-def serialize_chat_member(membership):
 
+def serialize_chat_member(membership):
     return {
         "id": membership.user.id,
         "username": membership.user.username,
         "role": membership.role,
-        "joined_at": membership.joined_at
+        "joined_at": membership.joined_at,
     }
 
+
+def serialize_message_read(read):
+    return {
+        "user_id": read.user_id,
+        "username": read.user.username,
+        "read_at": read.read_at,
+    }
+
+
 def serialize_message(message):
+    """
+    Convert a Message instance to JSON-compatible data.
+    """
 
-    if message.is_deleted:
-        content = "This message was deleted."
+    content = (
+        "This message was deleted."
+        if message.is_deleted
+        else message.content
+    )
 
-    else:
-        content = message.content
+    reply_to = None
+
+    if message.reply_to:
+        reply_to = {
+            "id": message.reply_to.id,
+            "sender": message.reply_to.sender.username,
+            "content": (
+                "This message was deleted."
+                if message.reply_to.is_deleted
+                else message.reply_to.content
+            ),
+        }
 
     return {
         "id": message.id,
@@ -83,6 +194,7 @@ def serialize_message(message):
         "updated_at": message.updated_at,
         "is_edited": message.is_edited,
         "is_deleted": message.is_deleted,
+
         "attachments": [
             {
                 "id": attachment.id,
@@ -92,47 +204,89 @@ def serialize_message(message):
             }
             for attachment in message.attachments.all()
         ],
-        "reply_to": (
-            {
-                "id": message.reply_to.id,
-                "sender": message.reply_to.sender.username,
-                "content": (
-                    "This message was deleted."
-                    if message.reply_to.is_deleted
-                    else message.reply_to.content
-                )
-            }
-            if message.reply_to
-            else None
-        ),
+
+        "reply_to": reply_to,
     }
 
 
-def is_chat_member(chat, user):
+def serialize_chat_preview(chat, user):
+    """
+    Serialize a chat for the chat list.
+    """
 
-    return ChatMember.objects.filter(
-        chat=chat,
-        user=user
-    ).exists()
+    last_message = (
+        Message.objects
+        .filter(
+            chat=chat
+        )
+        .select_related(
+            "sender"
+        )
+        .order_by(
+            "-created_at"
+        )
+        .first()
+    )
+
+    unread_count = (
+        Message.objects
+        .filter(
+            chat=chat,
+            is_deleted=False,
+        )
+        .exclude(
+            sender=user
+        )
+        .exclude(
+            reads__user=user
+        )
+        .count()
+    )
+
+    data = serialize_chat(chat)
+
+    data["last_message"] = None
+
+    if last_message:
+        data["last_message"] = {
+            "id": last_message.id,
+            "sender": last_message.sender.username,
+            "content": (
+                "This message was deleted."
+                if last_message.is_deleted
+                else last_message.content
+            ),
+            "created_at": last_message.created_at,
+            "is_deleted": last_message.is_deleted,
+        }
+
+    data["unread_count"] = unread_count
+
+    return data
 
 
 # =========================================================
-# Hello
+# General
 # =========================================================
 
 @require_http_methods(["GET"])
 def hello(request):
 
-    name = request.GET.get("name")
+    name = request.GET.get(
+        "name",
+        ""
+    ).strip()
 
-    return JsonResponse({
-        "message": f"Hello {name}!",
-        "status": "success"
-    })
+    return JsonResponse(
+        {
+            "message": f"Hello {name}!",
+            "status": "success",
+        }
+    )
 
 
 # =========================================================
-# CSRF Token
+# CSRF
 # =========================================================
 
 @require_http_methods(["GET"])
@@ -140,9 +294,11 @@ def csrf_token(request):
 
     token = get_token(request)
 
-    return JsonResponse({
-        "csrfToken": token
-    })
+    return JsonResponse(
+        {
+            "csrfToken": token,
+        }
+    )
 
 
 # =========================================================
@@ -162,7 +318,6 @@ def register(request):
     password = data.get("password")
 
     if not username or not password:
-
         return JsonResponse(
             {
                 "error": "username and password are required"
@@ -171,10 +326,17 @@ def register(request):
         )
 
     if not isinstance(username, str):
-
         return JsonResponse(
             {
                 "error": "username must be a string"
+            },
+            status=400
+        )
+
+    if not isinstance(password, str):
+        return JsonResponse(
+            {
+                "error": "password must be a string"
             },
             status=400
         )
@@ -185,7 +347,6 @@ def register(request):
         r"[A-Za-z0-9_]{3,30}",
         username
     ):
-
         return JsonResponse(
             {
                 "error": (
@@ -200,7 +361,6 @@ def register(request):
     if User.objects.filter(
         username=username
     ).exists():
-
         return JsonResponse(
             {
                 "error": "username is unavailable"
@@ -209,14 +369,12 @@ def register(request):
         )
 
     try:
-
         validate_password(password)
 
-    except ValidationError as e:
-
+    except ValidationError as error:
         return JsonResponse(
             {
-                "error": e.messages
+                "error": error.messages
             },
             status=400
         )
@@ -229,7 +387,8 @@ def register(request):
     return JsonResponse(
         {
             "message": "User created successfully",
-            "username": user.username
+            "username": user.username,
+            "status": "success",
         },
         status=201
     )
@@ -252,13 +411,34 @@ def user_login(request):
     password = data.get("password")
 
     if not username or not password:
-
         return JsonResponse(
             {
                 "error": "username and password are required"
             },
             status=400
         )
+
+    if not isinstance(username, str):
+        return JsonResponse(
+            {
+                "error": "username must be a string"
+            },
+            status=400
+        )
+
+    if not isinstance(password, str):
+        return JsonResponse(
+            {
+                "error": "password must be a string"
+            },
+            status=400
+        )
+
+    username = username.strip()
+
+    # -----------------------------------------------------
+    # Rate limiting
+    # -----------------------------------------------------
 
     ip = request.META.get(
         "REMOTE_ADDR",
@@ -273,7 +453,6 @@ def user_login(request):
     )
 
     if attempts >= 3:
-
         return JsonResponse(
             {
                 "error": (
@@ -284,7 +463,12 @@ def user_login(request):
             status=429
         )
 
+    # -----------------------------------------------------
+    # Authentication
+    # -----------------------------------------------------
+
     user = authenticate(
+        request=request,
         username=username,
         password=password
     )
@@ -314,7 +498,9 @@ def user_login(request):
     return JsonResponse(
         {
             "message": "Login successful",
-            "username": user.username
+            "username": user.username,
+            "user_id": user.id,
+            "status": "success",
         },
         status=200
     )
@@ -332,7 +518,8 @@ def user_logout(request):
 
     return JsonResponse(
         {
-            "message": "Logout successful"
+            "message": "Logout successful",
+            "status": "success",
         },
         status=200
     )
@@ -349,7 +536,8 @@ def me(request):
     return JsonResponse(
         {
             "id": request.user.id,
-            "username": request.user.username
+            "username": request.user.username,
+            "status": "success",
         }
     )
 
@@ -368,41 +556,44 @@ def search_users(request):
     ).strip()
 
     if not query:
-
         return JsonResponse(
             {
                 "users": [],
-                "status": "success"
+                "status": "success",
             }
         )
 
-    users = User.objects.filter(
-        username__icontains=query
-    ).exclude(
-        id=request.user.id
-    ).order_by(
-        "username"
-    )[:20]
+    users = (
+        User.objects
+        .filter(
+            username__icontains=query
+        )
+        .exclude(
+            id=request.user.id
+        )
+        .order_by(
+            "username"
+        )[:MAX_SEARCH_RESULTS]
+    )
 
-    data = []
-
-    for user in users:
-
-        data.append({
+    data = [
+        {
             "id": user.id,
             "username": user.username,
-        })
+        }
+        for user in users
+    ]
 
     return JsonResponse(
         {
             "users": data,
-            "status": "success"
+            "status": "success",
         }
     )
 
 
 # =========================================================
-# Create Chat
+# Create Group Chat
 # =========================================================
 
 @csrf_exempt
@@ -469,7 +660,7 @@ def create_chat(request):
     return JsonResponse(
         {
             "chat": serialize_chat(chat),
-            "status": "success"
+            "status": "success",
         },
         status=201
     )
@@ -491,8 +682,7 @@ def create_private_chat(request):
 
     username = data.get("username")
 
-    if not isinstance(username, str) or not username.strip():
-
+    if not isinstance(username, str):
         return JsonResponse(
             {
                 "error": "username is required"
@@ -502,12 +692,23 @@ def create_private_chat(request):
 
     username = username.strip()
 
-    target_user = User.objects.filter(
-        username=username
-    ).first()
+    if not username:
+        return JsonResponse(
+            {
+                "error": "username is required"
+            },
+            status=400
+        )
+
+    target_user = (
+        User.objects
+        .filter(
+            username=username
+        )
+        .first()
+    )
 
     if not target_user:
-
         return JsonResponse(
             {
                 "error": "User not found"
@@ -516,31 +717,46 @@ def create_private_chat(request):
         )
 
     if target_user.id == request.user.id:
-
         return JsonResponse(
             {
-                "error": "You cannot create a private chat with yourself"
+                "error": (
+                    "You cannot create a private "
+                    "chat with yourself"
+                )
             },
             status=400
         )
 
-    existing_chat = Chat.objects.filter(
-        type="private",
-        memberships__user=request.user
-    ).filter(
-        memberships__user=target_user
-    ).distinct().first()
+    # -----------------------------------------------------
+    # Check existing private chat
+    # -----------------------------------------------------
+
+    existing_chat = (
+        Chat.objects
+        .filter(
+            type="private",
+            memberships__user=request.user
+        )
+        .filter(
+            memberships__user=target_user
+        )
+        .distinct()
+        .first()
+    )
 
     if existing_chat:
-
         return JsonResponse(
             {
                 "chat": serialize_chat(existing_chat),
                 "status": "success",
-                "created": False
+                "created": False,
             },
             status=200
         )
+
+    # -----------------------------------------------------
+    # Create private chat
+    # -----------------------------------------------------
 
     with transaction.atomic():
 
@@ -548,26 +764,30 @@ def create_private_chat(request):
             type="private"
         )
 
-        ChatMember.objects.create(
-            chat=chat,
-            user=request.user,
-            role="admin"
-        )
-
-        ChatMember.objects.create(
-            chat=chat,
-            user=target_user,
-            role="member"
+        ChatMember.objects.bulk_create(
+            [
+                ChatMember(
+                    chat=chat,
+                    user=request.user,
+                    role="admin"
+                ),
+                ChatMember(
+                    chat=chat,
+                    user=target_user,
+                    role="member"
+                ),
+            ]
         )
 
     return JsonResponse(
         {
             "chat": serialize_chat(chat),
             "status": "success",
-            "created": True
+            "created": True,
         },
         status=201
     )
+
 
 # =========================================================
 # Get Chats
@@ -577,29 +797,34 @@ def create_private_chat(request):
 @require_http_methods(["GET"])
 def get_chats(request):
 
-    members = ChatMember.objects.filter(
-        user=request.user
-    ).select_related(
-        "chat"
-    ).order_by(
-        "-chat__created_at"
+    memberships = (
+        ChatMember.objects
+        .filter(
+            user=request.user
+        )
+        .select_related(
+            "chat"
+        )
+        .order_by(
+            "-chat__created_at"
+        )
     )
 
-    chats = []
-
-    for member in members:
-
-        chats.append(
-            serialize_chat(member.chat)
+    chats = [
+        serialize_chat_preview(
+            membership.chat,
+            request.user
         )
+        for membership in memberships
+    ]
 
     return JsonResponse(
         {
             "chats": chats,
-            "status": "success"
-        },
-        status=200
+            "status": "success",
+        }
     )
+
 
 # =========================================================
 # Get Chat Detail
@@ -609,9 +834,7 @@ def get_chats(request):
 @require_http_methods(["GET"])
 def get_chat_detail(request, chat_id):
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
         return JsonResponse(
@@ -621,12 +844,10 @@ def get_chat_detail(request, chat_id):
             status=404
         )
 
-    membership = ChatMember.objects.filter(
-        chat=chat,
-        user=request.user
-    ).first()
-
-    if not membership:
+    if not is_chat_member(
+        chat,
+        request.user
+    ):
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -634,12 +855,17 @@ def get_chat_detail(request, chat_id):
             status=403
         )
 
-    members = ChatMember.objects.filter(
-        chat=chat
-    ).select_related(
-        "user"
-    ).order_by(
-        "joined_at"
+    members = (
+        ChatMember.objects
+        .filter(
+            chat=chat
+        )
+        .select_related(
+            "user"
+        )
+        .order_by(
+            "joined_at"
+        )
     )
 
     return JsonResponse(
@@ -652,11 +878,10 @@ def get_chat_detail(request, chat_id):
                 "members": [
                     serialize_chat_member(member)
                     for member in members
-                ]
+                ],
             },
-            "status": "success"
-        },
-        status=200
+            "status": "success",
+        }
     )
 
 
@@ -668,12 +893,9 @@ def get_chat_detail(request, chat_id):
 @require_http_methods(["GET"])
 def get_chat_members(request, chat_id):
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -685,7 +907,6 @@ def get_chat_members(request, chat_id):
         chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -693,28 +914,33 @@ def get_chat_members(request, chat_id):
             status=403
         )
 
-    members = ChatMember.objects.filter(
-        chat=chat
-    ).select_related(
-        "user"
-    ).order_by(
-        "joined_at"
+    members = (
+        ChatMember.objects
+        .filter(
+            chat=chat
+        )
+        .select_related(
+            "user"
+        )
+        .order_by(
+            "joined_at"
+        )
     )
 
-    data = []
-
-    for member in members:
-
-        data.append({
+    data = [
+        {
             "id": member.user.id,
             "username": member.user.username,
+            "role": member.role,
             "joined_at": member.joined_at,
-        })
+        }
+        for member in members
+    ]
 
     return JsonResponse(
         {
             "members": data,
-            "status": "success"
+            "status": "success",
         }
     )
 
@@ -736,8 +962,7 @@ def add_chat_member(request):
     chat_id = data.get("chat")
     username = data.get("username")
 
-    if not chat_id or not username:
-
+    if chat_id is None or not username:
         return JsonResponse(
             {
                 "error": "chat and username are required"
@@ -746,11 +971,9 @@ def add_chat_member(request):
         )
 
     try:
-
         chat_id = int(chat_id)
 
     except (TypeError, ValueError):
-
         return JsonResponse(
             {
                 "error": "chat must be a valid integer"
@@ -758,12 +981,27 @@ def add_chat_member(request):
             status=400
         )
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    if chat_id <= 0:
+        return JsonResponse(
+            {
+                "error": "chat must be a positive integer"
+            },
+            status=400
+        )
+
+    if not isinstance(username, str):
+        return JsonResponse(
+            {
+                "error": "username must be a string"
+            },
+            status=400
+        )
+
+    username = username.strip()
+
+    chat = get_chat(chat_id)
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -771,13 +1009,12 @@ def add_chat_member(request):
             status=404
         )
 
-    membership = ChatMember.objects.filter(
-        chat=chat,
-        user=request.user
-    ).first()
+    membership = get_chat_membership(
+        chat,
+        request.user
+    )
 
     if not membership:
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -786,7 +1023,6 @@ def add_chat_member(request):
         )
 
     if membership.role != "admin":
-
         return JsonResponse(
             {
                 "error": "Only chat admins can add members"
@@ -794,12 +1030,15 @@ def add_chat_member(request):
             status=403
         )
 
-    user = User.objects.filter(
-        username=username
-    ).first()
+    user = (
+        User.objects
+        .filter(
+            username=username
+        )
+        .first()
+    )
 
     if not user:
-
         return JsonResponse(
             {
                 "error": "User not found"
@@ -811,7 +1050,6 @@ def add_chat_member(request):
         chat=chat,
         user=user
     ).exists():
-
         return JsonResponse(
             {
                 "error": "User is already a member of this chat"
@@ -822,7 +1060,7 @@ def add_chat_member(request):
     ChatMember.objects.create(
         chat=chat,
         user=user,
-        role = "member"
+        role="member"
     )
 
     return JsonResponse(
@@ -830,7 +1068,7 @@ def add_chat_member(request):
             "message": "User added successfully",
             "chat": chat.id,
             "username": user.username,
-            "status": "success"
+            "status": "success",
         },
         status=201
     )
@@ -849,12 +1087,9 @@ def remove_chat_member(
     user_id
 ):
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -862,13 +1097,12 @@ def remove_chat_member(
             status=404
         )
 
-    membership = ChatMember.objects.filter(
-        chat=chat,
-        user=request.user
-    ).first()
+    membership = get_chat_membership(
+        chat,
+        request.user
+    )
 
     if not membership:
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -877,7 +1111,6 @@ def remove_chat_member(
         )
 
     if membership.role != "admin":
-
         return JsonResponse(
             {
                 "error": "Only chat admins can remove members"
@@ -885,13 +1118,19 @@ def remove_chat_member(
             status=403
         )
 
-    member = ChatMember.objects.filter(
-        chat=chat,
-        user_id=user_id
-    ).first()
+    member = (
+        ChatMember.objects
+        .filter(
+            chat=chat,
+            user_id=user_id
+        )
+        .select_related(
+            "user"
+        )
+        .first()
+    )
 
     if not member:
-
         return JsonResponse(
             {
                 "error": "User is not a member of this chat"
@@ -900,7 +1139,6 @@ def remove_chat_member(
         )
 
     if member.user_id == request.user.id:
-
         return JsonResponse(
             {
                 "error": (
@@ -910,20 +1148,21 @@ def remove_chat_member(
             },
             status=400
         )
-    if member.role == "admin":
 
+    if member.role == "admin":
         return JsonResponse(
             {
                 "error": "Admins cannot remove other admins"
             },
-            status = 403
+            status=403
         )
+
     member.delete()
 
     return JsonResponse(
         {
             "message": "User removed successfully",
-            "status": "success"
+            "status": "success",
         }
     )
 
@@ -937,12 +1176,9 @@ def remove_chat_member(
 @require_http_methods(["POST"])
 def leave_chat(request, chat_id):
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -950,13 +1186,12 @@ def leave_chat(request, chat_id):
             status=404
         )
 
-    member = ChatMember.objects.filter(
-        chat=chat,
-        user=request.user
-    ).first()
+    membership = get_chat_membership(
+        chat,
+        request.user
+    )
 
-    if not member:
-
+    if not membership:
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -964,12 +1199,12 @@ def leave_chat(request, chat_id):
             status=403
         )
 
-    member.delete()
+    membership.delete()
 
     return JsonResponse(
         {
             "message": "You left the chat",
-            "status": "success"
+            "status": "success",
         }
     )
 
@@ -992,12 +1227,11 @@ def receive_message(request):
     chat_id = data.get("chat")
     reply_to_id = data.get("reply_to")
 
-    # =====================================================
-    # Validate Content
-    # =====================================================
+    # -----------------------------------------------------
+    # Content validation
+    # -----------------------------------------------------
 
     if not isinstance(content, str):
-
         return JsonResponse(
             {
                 "error": "content must be a string"
@@ -1008,7 +1242,6 @@ def receive_message(request):
     content = content.strip()
 
     if not content:
-
         return JsonResponse(
             {
                 "error": "content is required"
@@ -1016,25 +1249,25 @@ def receive_message(request):
             status=400
         )
 
-    if len(content) > 4000:
-
+    if len(content) > MAX_MESSAGE_LENGTH:
         return JsonResponse(
             {
-                "error": "content must not exceed 4000 characters"
+                "error": (
+                    "content must not exceed "
+                    f"{MAX_MESSAGE_LENGTH} characters"
+                )
             },
             status=400
         )
 
-    # =====================================================
-    # Validate Chat ID
-    # =====================================================
+    # -----------------------------------------------------
+    # Chat ID validation
+    # -----------------------------------------------------
 
     try:
-
         chat_id = int(chat_id)
 
     except (TypeError, ValueError):
-
         return JsonResponse(
             {
                 "error": "chat must be a valid integer"
@@ -1043,7 +1276,6 @@ def receive_message(request):
         )
 
     if chat_id <= 0:
-
         return JsonResponse(
             {
                 "error": "chat must be a positive integer"
@@ -1051,16 +1283,13 @@ def receive_message(request):
             status=400
         )
 
-    # =====================================================
-    # Find Chat
-    # =====================================================
+    # -----------------------------------------------------
+    # Find chat
+    # -----------------------------------------------------
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
-
         return JsonResponse(
             {
                 "error": "Chat not found"
@@ -1068,15 +1297,14 @@ def receive_message(request):
             status=404
         )
 
-    # =====================================================
-    # Check Membership
-    # =====================================================
+    # -----------------------------------------------------
+    # Membership
+    # -----------------------------------------------------
 
     if not is_chat_member(
         chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1084,20 +1312,18 @@ def receive_message(request):
             status=403
         )
 
-    # =====================================================
-    # Validate Reply Message
-    # =====================================================
+    # -----------------------------------------------------
+    # Reply validation
+    # -----------------------------------------------------
 
     reply_to = None
 
     if reply_to_id is not None:
 
         try:
-
             reply_to_id = int(reply_to_id)
 
         except (TypeError, ValueError):
-
             return JsonResponse(
                 {
                     "error": "reply_to must be a valid integer"
@@ -1106,7 +1332,6 @@ def receive_message(request):
             )
 
         if reply_to_id <= 0:
-
             return JsonResponse(
                 {
                     "error": "reply_to must be a positive integer"
@@ -1114,23 +1339,29 @@ def receive_message(request):
                 status=400
             )
 
-        reply_to = Message.objects.filter(
-            id=reply_to_id,
-            chat=chat
-        ).first()
+        reply_to = (
+            Message.objects
+            .filter(
+                id=reply_to_id,
+                chat=chat
+            )
+            .first()
+        )
 
         if not reply_to:
-
             return JsonResponse(
                 {
-                    "error": "Reply message not found in this chat"
+                    "error": (
+                        "Reply message not found "
+                        "in this chat"
+                    )
                 },
                 status=404
             )
 
-    # =====================================================
-    # Create Message
-    # =====================================================
+    # -----------------------------------------------------
+    # Create message
+    # -----------------------------------------------------
 
     message = Message.objects.create(
         chat=chat,
@@ -1139,14 +1370,30 @@ def receive_message(request):
         reply_to=reply_to,
     )
 
+    # Reload relations required by serializer
+    message = (
+        Message.objects
+        .select_related(
+            "sender",
+            "chat",
+            "reply_to",
+            "reply_to__sender",
+        )
+        .prefetch_related(
+            "attachments",
+        )
+        .get(
+            id=message.id
+        )
+    )
+
     return JsonResponse(
         {
             "message": serialize_message(message),
-            "status": "success"
+            "status": "success",
         },
         status=201
     )
-
 
 
 # =========================================================
@@ -1186,9 +1433,7 @@ def get_messages(request):
             status=400
         )
 
-    chat = Chat.objects.filter(
-        id=chat_id
-    ).first()
+    chat = get_chat(chat_id)
 
     if not chat:
         return JsonResponse(
@@ -1198,12 +1443,10 @@ def get_messages(request):
             status=404
         )
 
-    is_member = ChatMember.objects.filter(
-        chat=chat,
-        user=request.user
-    ).exists()
-
-    if not is_member:
+    if not is_chat_member(
+        chat,
+        request.user
+    ):
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1211,13 +1454,16 @@ def get_messages(request):
             status=403
         )
 
-    # =====================================================
+    # -----------------------------------------------------
     # Pagination
-    # =====================================================
+    # -----------------------------------------------------
 
     try:
         page = int(
-            request.GET.get("page", 1)
+            request.GET.get(
+                "page",
+                1
+            )
         )
 
     except (TypeError, ValueError):
@@ -1230,7 +1476,10 @@ def get_messages(request):
 
     try:
         limit = int(
-            request.GET.get("limit", 50)
+            request.GET.get(
+                "limit",
+                DEFAULT_MESSAGE_LIMIT
+            )
         )
 
     except (TypeError, ValueError):
@@ -1257,23 +1506,33 @@ def get_messages(request):
             status=400
         )
 
-    # Prevent huge requests
-    MAX_LIMIT = 100
+    limit = min(
+        limit,
+        MAX_MESSAGE_LIMIT
+    )
 
-    if limit > MAX_LIMIT:
-        limit = MAX_LIMIT
+    # -----------------------------------------------------
+    # Messages query
+    # -----------------------------------------------------
 
-    messages = Message.objects.filter(
-        chat=chat
-    ).select_related(
-        "sender",
-        "chat",
-        "reply_to",
-        "reply_to__sender"
-    ).prefetch_related(
-        "attachments"
-    ).order_by(
-        "-created_at"
+    messages = (
+        Message.objects
+        .filter(
+            chat=chat
+        )
+        .select_related(
+            "sender",
+            "chat",
+            "reply_to",
+            "reply_to__sender",
+        )
+        .prefetch_related(
+            "attachments",
+            "reads__user",
+        )
+        .order_by(
+            "-created_at"
+        )
     )
 
     paginator = Paginator(
@@ -1296,10 +1555,18 @@ def get_messages(request):
 
     for message in current_page.object_list:
 
-        data = [
-            serialize_message(message)
-            for message in current_page.object_list
+        message_data = serialize_message(
+            message
+        )
+
+        message_data["read_by"] = [
+            serialize_message_read(read)
+            for read in message.reads.all()
         ]
+
+        data.append(
+            message_data
+        )
 
     return JsonResponse(
         {
@@ -1311,9 +1578,8 @@ def get_messages(request):
                 "has_next": current_page.has_next(),
                 "has_previous": current_page.has_previous(),
             },
-            "status": "success"
-        },
-        status=200
+            "status": "success",
+        }
     )
 
 
@@ -1324,17 +1590,27 @@ def get_messages(request):
 @csrf_exempt
 @require_auth
 @require_http_methods(["PATCH"])
-def edit_message(request, message_id):
+def edit_message(
+    request,
+    message_id
+):
 
-    message = Message.objects.filter(
-        id=message_id
-    ).select_related(
-        "sender",
-        "chat"
-    ).first()
+    message = (
+        Message.objects
+        .select_related(
+            "sender",
+            "chat",
+        )
+        .prefetch_related(
+            "attachments",
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
 
     if not message:
-
         return JsonResponse(
             {
                 "error": "Message not found"
@@ -1346,7 +1622,6 @@ def edit_message(request, message_id):
         message.chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1355,7 +1630,6 @@ def edit_message(request, message_id):
         )
 
     if message.sender_id != request.user.id:
-
         return JsonResponse(
             {
                 "error": "You can only edit your own messages"
@@ -1364,7 +1638,6 @@ def edit_message(request, message_id):
         )
 
     if message.is_deleted:
-
         return JsonResponse(
             {
                 "error": "Deleted messages cannot be edited"
@@ -1380,7 +1653,6 @@ def edit_message(request, message_id):
     content = data.get("content")
 
     if not isinstance(content, str):
-
         return JsonResponse(
             {
                 "error": "content must be a string"
@@ -1391,7 +1663,6 @@ def edit_message(request, message_id):
     content = content.strip()
 
     if not content:
-
         return JsonResponse(
             {
                 "error": "content is required"
@@ -1399,11 +1670,13 @@ def edit_message(request, message_id):
             status=400
         )
 
-    if len(content) > 4000:
-
+    if len(content) > MAX_MESSAGE_LENGTH:
         return JsonResponse(
             {
-                "error": "content must not exceed 4000 characters"
+                "error": (
+                    "content must not exceed "
+                    f"{MAX_MESSAGE_LENGTH} characters"
+                )
             },
             status=400
         )
@@ -1415,14 +1688,14 @@ def edit_message(request, message_id):
         update_fields=[
             "content",
             "is_edited",
-            "updated_at"
+            "updated_at",
         ]
     )
 
     return JsonResponse(
         {
             "message": serialize_message(message),
-            "status": "success"
+            "status": "success",
         }
     )
 
@@ -1434,16 +1707,23 @@ def edit_message(request, message_id):
 @csrf_exempt
 @require_auth
 @require_http_methods(["DELETE"])
-def delete_message(request, message_id):
+def delete_message(
+    request,
+    message_id
+):
 
-    message = Message.objects.filter(
-        id=message_id
-    ).select_related(
-        "chat"
-    ).first()
+    message = (
+        Message.objects
+        .select_related(
+            "chat",
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
 
     if not message:
-
         return JsonResponse(
             {
                 "error": "Message not found"
@@ -1455,7 +1735,6 @@ def delete_message(request, message_id):
         message.chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1464,7 +1743,6 @@ def delete_message(request, message_id):
         )
 
     if message.sender_id != request.user.id:
-
         return JsonResponse(
             {
                 "error": "You can only delete your own messages"
@@ -1473,7 +1751,6 @@ def delete_message(request, message_id):
         )
 
     if message.is_deleted:
-
         return JsonResponse(
             {
                 "error": "Message is already deleted"
@@ -1488,16 +1765,17 @@ def delete_message(request, message_id):
         update_fields=[
             "is_deleted",
             "content",
-            "updated_at"
+            "updated_at",
         ]
     )
 
     return JsonResponse(
         {
             "message": "Message deleted successfully",
-            "status": "success"
+            "status": "success",
         }
     )
+
 
 # =========================================================
 # Forward Message
@@ -1506,7 +1784,10 @@ def delete_message(request, message_id):
 @csrf_exempt
 @require_auth
 @require_http_methods(["POST"])
-def forward_message(request, message_id):
+def forward_message(
+    request,
+    message_id
+):
 
     data, error = parse_json_body(request)
 
@@ -1516,7 +1797,6 @@ def forward_message(request, message_id):
     target_chat_id = data.get("chat")
 
     if target_chat_id is None:
-
         return JsonResponse(
             {
                 "error": "chat is required"
@@ -1525,11 +1805,9 @@ def forward_message(request, message_id):
         )
 
     try:
-
         target_chat_id = int(target_chat_id)
 
     except (TypeError, ValueError):
-
         return JsonResponse(
             {
                 "error": "chat must be a valid integer"
@@ -1538,7 +1816,6 @@ def forward_message(request, message_id):
         )
 
     if target_chat_id <= 0:
-
         return JsonResponse(
             {
                 "error": "chat must be a positive integer"
@@ -1546,21 +1823,26 @@ def forward_message(request, message_id):
             status=400
         )
 
-    # =====================================================
-    # Find Original Message
-    # =====================================================
+    # -----------------------------------------------------
+    # Source message
+    # -----------------------------------------------------
 
-    message = Message.objects.filter(
-        id=message_id
-    ).select_related(
-        "chat",
-        "sender"
-    ).prefetch_related(
-        "attachments"
-    ).first()
+    message = (
+        Message.objects
+        .select_related(
+            "chat",
+            "sender",
+        )
+        .prefetch_related(
+            "attachments",
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
 
     if not message:
-
         return JsonResponse(
             {
                 "error": "Message not found"
@@ -1568,15 +1850,10 @@ def forward_message(request, message_id):
             status=404
         )
 
-    # =====================================================
-    # Check Source Chat Membership
-    # =====================================================
-
     if not is_chat_member(
         message.chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of the source chat"
@@ -1584,12 +1861,7 @@ def forward_message(request, message_id):
             status=403
         )
 
-    # =====================================================
-    # Deleted Messages Cannot Be Forwarded
-    # =====================================================
-
     if message.is_deleted:
-
         return JsonResponse(
             {
                 "error": "Deleted messages cannot be forwarded"
@@ -1597,16 +1869,15 @@ def forward_message(request, message_id):
             status=400
         )
 
-    # =====================================================
-    # Find Target Chat
-    # =====================================================
+    # -----------------------------------------------------
+    # Target chat
+    # -----------------------------------------------------
 
-    target_chat = Chat.objects.filter(
-        id=target_chat_id
-    ).first()
+    target_chat = get_chat(
+        target_chat_id
+    )
 
     if not target_chat:
-
         return JsonResponse(
             {
                 "error": "Target chat not found"
@@ -1614,52 +1885,72 @@ def forward_message(request, message_id):
             status=404
         )
 
-    # =====================================================
-    # Check Target Chat Membership
-    # =====================================================
-
     if not is_chat_member(
         target_chat,
         request.user
     ):
-
         return JsonResponse(
             {
-                "error": "You are not a member of the target chat"
+                "error": (
+                    "You are not a member "
+                    "of the target chat"
+                )
             },
             status=403
         )
 
-    # =====================================================
-    # Create Forwarded Message
-    # =====================================================
+    # -----------------------------------------------------
+    # Forward
+    # -----------------------------------------------------
 
     with transaction.atomic():
 
         forwarded_message = Message.objects.create(
             chat=target_chat,
             sender=request.user,
-            content=message.content
+            content=message.content,
         )
 
-        # Copy attachments
-        for attachment in message.attachments.all():
-
-            Attachment.objects.create(
+        attachments = [
+            Attachment(
                 message=forwarded_message,
-                file=attachment.file,
-                file_type=attachment.file_type
+                file=attachment.file.name,
+                file_type=attachment.file_type,
             )
+            for attachment in message.attachments.all()
+        ]
+
+        if attachments:
+            Attachment.objects.bulk_create(
+                attachments
+            )
+
+    forwarded_message = (
+        Message.objects
+        .select_related(
+            "sender",
+            "chat",
+            "reply_to",
+            "reply_to__sender",
+        )
+        .prefetch_related(
+            "attachments",
+        )
+        .get(
+            id=forwarded_message.id
+        )
+    )
 
     return JsonResponse(
         {
             "message": serialize_message(
                 forwarded_message
             ),
-            "status": "success"
+            "status": "success",
         },
         status=201
     )
+
 
 # =========================================================
 # Search Messages
@@ -1674,14 +1965,11 @@ def search_messages(request):
         ""
     ).strip()
 
-    chat_id = request.GET.get("chat")
-
-    # =====================================================
-    # Validate Query
-    # =====================================================
+    chat_id = request.GET.get(
+        "chat"
+    )
 
     if not query:
-
         return JsonResponse(
             {
                 "error": "q is required"
@@ -1689,45 +1977,49 @@ def search_messages(request):
             status=400
         )
 
-    if len(query) > 100:
-
+    if len(query) > MAX_SEARCH_LENGTH:
         return JsonResponse(
             {
-                "error": "q must not exceed 100 characters"
+                "error": (
+                    "q must not exceed "
+                    f"{MAX_SEARCH_LENGTH} characters"
+                )
             },
             status=400
         )
 
-    # =====================================================
-    # Base Query
-    # =====================================================
-
-    messages = Message.objects.filter(
-        content__icontains=query,
-        is_deleted=False,
-        chat__memberships__user=request.user
-    ).select_related(
-        "sender",
-        "chat",
-        "reply_to",
-        "reply_to__sender"
-    ).prefetch_related(
-        "attachments",
-        "reply_to__attachments"
-    ).order_by(
-        "-created_at"
+    messages = (
+        Message.objects
+        .filter(
+            content__icontains=query,
+            is_deleted=False,
+            chat__memberships__user=request.user,
+        )
+        .select_related(
+            "sender",
+            "chat",
+            "reply_to",
+            "reply_to__sender",
+        )
+        .prefetch_related(
+            "attachments",
+            "reply_to__attachments",
+        )
+        .order_by(
+            "-created_at"
+        )
     )
 
-    # =====================================================
-    # Optional Chat Filter
-    # =====================================================
+    # -----------------------------------------------------
+    # Optional chat filter
+    # -----------------------------------------------------
+
     if chat_id is not None:
 
         try:
             chat_id = int(chat_id)
 
         except (TypeError, ValueError):
-
             return JsonResponse(
                 {
                     "error": "chat must be a valid integer"
@@ -1736,7 +2028,6 @@ def search_messages(request):
             )
 
         if chat_id <= 0:
-
             return JsonResponse(
                 {
                     "error": "chat must be a positive integer"
@@ -1744,12 +2035,11 @@ def search_messages(request):
                 status=400
             )
 
-        chat = Chat.objects.filter(
-            id=chat_id
-        ).first()
+        chat = get_chat(
+            chat_id
+        )
 
         if not chat:
-
             return JsonResponse(
                 {
                     "error": "Chat not found"
@@ -1761,7 +2051,6 @@ def search_messages(request):
             chat,
             request.user
         ):
-
             return JsonResponse(
                 {
                     "error": "You are not a member of this chat"
@@ -1773,15 +2062,7 @@ def search_messages(request):
             chat_id=chat_id
         )
 
-    # =====================================================
-    # Limit Results
-    # =====================================================
-
-    messages = messages[:20]
-
-    # =====================================================
-    # Serialize
-    # =====================================================
+    messages = messages[:MAX_SEARCH_RESULTS]
 
     data = [
         serialize_message(message)
@@ -1793,10 +2074,10 @@ def search_messages(request):
             "messages": data,
             "query": query,
             "count": len(data),
-            "status": "success"
-        },
-        status=200
+            "status": "success",
+        }
     )
+
 
 # =========================================================
 # Mark Message As Read
@@ -1804,16 +2085,23 @@ def search_messages(request):
 
 @require_auth
 @require_http_methods(["POST"])
-def mark_message_read(request, message_id):
+def mark_message_read(
+    request,
+    message_id
+):
 
-    message = Message.objects.filter(
-        id=message_id
-    ).select_related(
-        "chat"
-    ).first()
+    message = (
+        Message.objects
+        .select_related(
+            "chat"
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
 
     if not message:
-
         return JsonResponse(
             {
                 "error": "Message not found"
@@ -1825,7 +2113,6 @@ def mark_message_read(request, message_id):
         message.chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1833,12 +2120,14 @@ def mark_message_read(request, message_id):
             status=403
         )
 
-    read, created = MessageRead.objects.update_or_create(
-        message=message,
-        user=request.user,
-        defaults={
-            "read_at": timezone.now()
-        }
+    read, created = (
+        MessageRead.objects.update_or_create(
+            message=message,
+            user=request.user,
+            defaults={
+                "read_at": timezone.now()
+            }
+        )
     )
 
     return JsonResponse(
@@ -1846,10 +2135,11 @@ def mark_message_read(request, message_id):
             "message_id": message.id,
             "read": True,
             "read_at": read.read_at,
-            "status": "success"
+            "status": "success",
         },
         status=201 if created else 200
     )
+
 
 # =========================================================
 # Upload Attachment
@@ -1863,14 +2153,18 @@ def upload_attachment(
     message_id
 ):
 
-    message = Message.objects.filter(
-        id=message_id
-    ).select_related(
-        "chat"
-    ).first()
+    message = (
+        Message.objects
+        .select_related(
+            "chat"
+        )
+        .filter(
+            id=message_id
+        )
+        .first()
+    )
 
     if not message:
-
         return JsonResponse(
             {
                 "error": "Message not found"
@@ -1882,7 +2176,6 @@ def upload_attachment(
         message.chat,
         request.user
     ):
-
         return JsonResponse(
             {
                 "error": "You are not a member of this chat"
@@ -1891,7 +2184,6 @@ def upload_attachment(
         )
 
     if message.sender_id != request.user.id:
-
         return JsonResponse(
             {
                 "error": (
@@ -1902,11 +2194,26 @@ def upload_attachment(
             status=403
         )
 
-    uploaded_file = request.FILES.get("file")
-    file_type = request.POST.get("file_type")
+    if message.is_deleted:
+        return JsonResponse(
+            {
+                "error": (
+                    "Cannot add attachments "
+                    "to a deleted message"
+                )
+            },
+            status=400
+        )
+
+    uploaded_file = request.FILES.get(
+        "file"
+    )
+
+    file_type = request.POST.get(
+        "file_type"
+    )
 
     if not uploaded_file:
-
         return JsonResponse(
             {
                 "error": "file is required"
@@ -1914,13 +2221,7 @@ def upload_attachment(
             status=400
         )
 
-    if file_type not in [
-        "image",
-        "video",
-        "audio",
-        "file"
-    ]:
-
+    if file_type not in ALLOWED_FILE_TYPES:
         return JsonResponse(
             {
                 "error": (
@@ -1931,10 +2232,7 @@ def upload_attachment(
             status=400
         )
 
-    MAX_FILE_SIZE = 10 * 1024 * 1024
-
     if uploaded_file.size > MAX_FILE_SIZE:
-
         return JsonResponse(
             {
                 "error": "Maximum file size is 10MB"
@@ -1945,7 +2243,7 @@ def upload_attachment(
     attachment = Attachment.objects.create(
         message=message,
         file=uploaded_file,
-        file_type=file_type
+        file_type=file_type,
     )
 
     return JsonResponse(
@@ -1956,7 +2254,7 @@ def upload_attachment(
                 "file_type": attachment.file_type,
                 "created_at": attachment.created_at,
             },
-            "status": "success"
+            "status": "success",
         },
         status=201
     )
