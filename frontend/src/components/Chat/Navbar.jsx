@@ -1,111 +1,98 @@
+
+import { useState } from "react";
 import { MessagesSquare, Settings, Contact } from "lucide-react";
 
 export default function Navbar() {
+  const [active, setActive] = useState("chats");
+
+  const navItems = [
+    {
+      id: "chats",
+      label: "Chats",
+      icon: MessagesSquare,
+    },
+    {
+      id: "contacts",
+      label: "Contact",
+      icon: Contact,
+    },
+    {
+      id: "settings",
+      label: "Settings",
+      icon: Settings,
+    },
+    {
+      id: "profile",
+      label: "Profile",
+      icon: null,
+    },
+  ];
+
   return (
-    <nav className=" flex relative bottom-4 z-50 items-center justify-center rounded-[90px] bg-white/10 backdrop-blur-2xl ">
+    <nav className="relative bottom-4 z-50 flex items-center justify-center rounded-[90px]">
       <div
         className="
-          flex items-center gap-1
+          flex items-center 
           rounded-[90px]
           border border-white/10
-          bg-gray-900/[0.10]
+          bg-gray-900/[0.05]
           p-1.5
           shadow-2xl shadow-black/30
           backdrop-blur-2xl
-          h-15
+          h-13
+          
         "
       >
-        {/* Chats */}
-        <a
-          href="#"
-          className="
-            group flex min-w-[68px] flex-col items-center justify-center
-            gap-1 rounded-[38px] px-3 py-1
-            text-gray-400
-            transition-all duration-300
-            hover:bg-blue-300/30  hover:text-blue-400
-          "
-        >
-          <MessagesSquare
-            size={18}
-            className="transition-transform duration-300 "
-          />
+        {navItems.map((item) => {
+          const isActive = active === item.id;
+          const Icon = item.icon;
 
-          <span className="text-[11px] font-medium">
-            Chats
-          </span>
-        </a>
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActive(item.id)}
+              className={`
+                group flex min-w-[68px] flex-col items-center justify-center
+                rounded-[38px] px-3 py-1
+                transition-all duration-300 cursor-pointer
+                ${
+                  isActive
+                    ? "bg-violet-300/30 text-violet-400"
+                    : "text-gray-400 hover:bg-violet-100/50 hover:text-violet-400"
+                }
+              `}
+            >
+              {item.id === "profile" ? (
+                <img
+                  src="/profile.jpg"
+                  alt="Profile"
+                  className={`
+                    h-[19px] w-[19px]
+                    rounded-full
+                    object-cover
+                    ring-1
+                    transition-all duration-300
+                    ${
+                      isActive
+                        ? "ring-violet-400"
+                        : "ring-white/20 group-hover:ring-white/50"
+                    }
+                  `}
+                />
+              ) : (
+                <Icon
+                  size={18}
+                  className="transition-transform duration-300"
+                />
+              )}
 
-        {/* Contacts */}
-        <a
-          href="#"
-          className="
-            group flex min-w-[68px] flex-col items-center justify-center
-            gap-1 rounded-[38px] px-3 py-1
-            text-gray-400
-            transition-all duration-300
-            hover:bg-blue-300/30 hover:text-blue-400
-          "
-        >
-          <Contact
-            size={18}
-            className="transition-transform duration-300 "
-          />
-
-          <span className="text-[11px] font-medium">
-            Contact
-          </span>
-        </a>
-
-        {/* Settings */}
-        <a
-          href="#"
-          className="
-            group flex min-w-[68px] flex-col items-center justify-center
-            gap-1 rounded-[38px] px-3 py-1
-            text-gray-400
-            transition-all duration-300
-            hover:bg-blue-300/30  hover:text-blue-400
-          "
-        >
-          <Settings
-            size={18}
-            className="transition-all duration-500"
-          />
-
-          <span className="text-[11px] font-medium">
-            Settings
-          </span>
-        </a>
-
-        {/* Profile */}
-        <a
-          href="#"
-          className="
-            group flex min-w-[68px] flex-col items-center justify-center
-            gap-1 rounded-[38px] px-3 py-1
-            text-gray-400
-            transition-all duration-300
-            hover:bg-blue-300/30  hover:text-blue-400
-          "
-        >
-          <img
-            src="/profile.jpg"
-            alt="Profile"
-            className="
-              h-[19px] w-[19px]
-              rounded-full
-              object-cover
-              ring-1 ring-white/20
-              transition-all duration-300
-              group-hover:ring-white/50
-            "
-          />
-
-          <span className="text-[11px] font-medium  hover:text-blue-400">
-            Profile
-          </span>
-        </a>
+              <span className="text-[11px] font-medium">
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
     </nav>
   );
