@@ -4,6 +4,8 @@ import {
   Download,
 } from "lucide-react";
 
+import { useAuth } from "../../../context/AuthContext";
+
 import MessageStatus from "./MessageStatus";
 
 export default function MessageBubble({
@@ -12,7 +14,18 @@ export default function MessageBubble({
   onReplyClick,
   highlighted,
 }) {
-  const isSent = message.sender === "me";
+  const { user } = useAuth();
+
+  /*
+   * تشخیص پیام ارسالی
+   *
+   * حالت‌های قابل پشتیبانی:
+   * 1. sender === "me"
+   * 2. sender === username کاربر فعلی
+   */
+  const isSent =
+    message.sender === "me" ||
+    message.sender === user?.username;
 
   const attachments = message.attachments || [];
 
@@ -28,7 +41,10 @@ export default function MessageBubble({
     }
 
     if (bytes < 1024 * 1024 * 1024) {
-      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      return `${(
+        bytes /
+        (1024 * 1024)
+      ).toFixed(1)} MB`;
     }
 
     return `${(
@@ -40,7 +56,9 @@ export default function MessageBubble({
   return (
     <div
       className={`flex w-full ${
-        isSent ? "justify-end" : "justify-start"
+        isSent
+          ? "justify-end"
+          : "justify-start"
       }`}
     >
       <div
@@ -86,7 +104,9 @@ export default function MessageBubble({
         {repliedMessage && (
           <div
             onClick={() =>
-              onReplyClick(repliedMessage.id)
+              onReplyClick(
+                repliedMessage.id
+              )
             }
             className={`
               mb-2
@@ -106,13 +126,19 @@ export default function MessageBubble({
             `}
           >
             {/* Sender */}
+
             <p className="font-semibold text-indigo-600">
-              {repliedMessage.sender === "me"
+              {repliedMessage.sender ===
+                "me" ||
+              repliedMessage.sender ===
+                user?.username
                 ? "You"
-                : "User"}
+                : repliedMessage.sender ||
+                  "User"}
             </p>
 
             {/* Original message */}
+
             <p className="mt-0.5 truncate text-gray-500">
               {repliedMessage.text ||
                 "Attachment"}
@@ -130,96 +156,191 @@ export default function MessageBubble({
               flex
               flex-col
               gap-2
-              ${message.text ? "mb-2" : ""}
+              ${
+                message.text
+                  ? "mb-2"
+                  : ""
+              }
             `}
           >
-            {attachments.map((attachment) => {
-              const file = attachment.file;
+            {attachments.map(
+              (attachment) => {
+                const file =
+                  attachment.file;
 
-              if (!file) return null;
+                if (!file) return null;
 
-              const isImage =
-                file.type.startsWith("image/");
+                const isImage =
+                  file.type?.startsWith(
+                    "image/"
+                  );
 
-              const isVideo =
-                file.type.startsWith("video/");
+                const isVideo =
+                  file.type?.startsWith(
+                    "video/"
+                  );
 
-              const isAudio =
-                file.type.startsWith("audio/");
+                const isAudio =
+                  file.type?.startsWith(
+                    "audio/"
+                  );
 
-              // =========================
-              // Image
-              // =========================
+                {/* ========================= */}
+                {/* Image */}
+                {/* ========================= */}
 
-              if (
-                isImage &&
-                attachment.preview
-              ) {
-                return (
-                  <div
-                    key={attachment.id}
-                    className="
-                      relative
-                      overflow-hidden
-                      rounded-xl
-                    "
-                  >
-                    <img
-                      src={attachment.preview}
-                      alt={file.name}
+                if (
+                  isImage &&
+                  attachment.preview
+                ) {
+                  return (
+                    <div
+                      key={
+                        attachment.id
+                      }
                       className="
-                        block
-                        max-h-[400px]
-                        max-w-full
-                        rounded-xl
-                        object-cover
-                      "
-                    />
-                  </div>
-                );
-              }
-
-              // =========================
-              // Video
-              // =========================
-
-              if (
-                isVideo &&
-                attachment.preview
-              ) {
-                return (
-                  <div
-                    key={attachment.id}
-                    className="
-                      relative
-                      overflow-hidden
-                      rounded-xl
-                      bg-black
-                    "
-                  >
-                    <video
-                      src={attachment.preview}
-                      controls
-                      playsInline
-                      className="
-                        block
-                        max-h-[400px]
-                        max-w-full
+                        relative
+                        overflow-hidden
                         rounded-xl
                       "
-                    />
-                  </div>
-                );
-              }
+                    >
+                      <img
+                        src={
+                          attachment.preview
+                        }
+                        alt={
+                          file.name
+                        }
+                        className="
+                          block
+                          max-h-[400px]
+                          max-w-full
+                          rounded-xl
+                          object-cover
+                        "
+                      />
+                    </div>
+                  );
+                }
 
-              // =========================
-              // Audio
-              // =========================
+                {/* ========================= */}
+                {/* Video */}
+                {/* ========================= */}
 
-              if (isAudio) {
+                if (
+                  isVideo &&
+                  attachment.preview
+                ) {
+                  return (
+                    <div
+                      key={
+                        attachment.id
+                      }
+                      className="
+                        relative
+                        overflow-hidden
+                        rounded-xl
+                        bg-black
+                      "
+                    >
+                      <video
+                        src={
+                          attachment.preview
+                        }
+                        controls
+                        playsInline
+                        className="
+                          block
+                          max-h-[400px]
+                          max-w-full
+                          rounded-xl
+                        "
+                      />
+                    </div>
+                  );
+                }
+
+                {/* ========================= */}
+                {/* Audio */}
+                {/* ========================= */}
+
+                if (isAudio) {
+                  return (
+                    <div
+                      key={
+                        attachment.id
+                      }
+                      className="
+                        flex
+                        min-w-64
+                        max-w-full
+                        items-center
+                        gap-3
+                        rounded-xl
+                        bg-black/5
+                        px-3
+                        py-2.5
+                      "
+                    >
+                      {/* Audio Icon */}
+
+                      <div
+                        className="
+                          flex
+                          h-9
+                          w-9
+                          shrink-0
+                          items-center
+                          justify-center
+                          rounded-full
+                          bg-indigo-100
+                          text-indigo-600
+                        "
+                      >
+                        <Music
+                          size={18}
+                          strokeWidth={1.8}
+                        />
+                      </div>
+
+                      {/* Audio Info */}
+
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">
+                          {file.name}
+                        </p>
+
+                        <p className="mt-0.5 text-[10px] text-gray-500">
+                          {formatFileSize(
+                            file.size
+                          )}
+                        </p>
+
+                        <audio
+                          src={
+                            attachment.preview
+                          }
+                          controls
+                          className="
+                            mt-1
+                            h-7
+                            w-full
+                          "
+                        />
+                      </div>
+                    </div>
+                  );
+                }
+
+                {/* ========================= */}
+                {/* Other File */}
+                {/* ========================= */}
+
                 return (
                   <div
-                    key={attachment.id}
+                    key={
+                      attachment.id
+                    }
                     className="
                       flex
                       min-w-64
@@ -232,29 +353,32 @@ export default function MessageBubble({
                       py-2.5
                     "
                   >
-                    {/* Audio Icon */}
+                    {/* File Icon */}
+
                     <div
                       className="
                         flex
-                        h-9
-                        w-9
+                        h-10
+                        w-10
                         shrink-0
                         items-center
                         justify-center
-                        rounded-full
-                        bg-indigo-100
-                        text-indigo-600
+                        rounded-xl
+                        bg-white
+                        text-gray-500
+                        shadow-sm
                       "
                     >
-                      <Music
-                        size={18}
+                      <FileText
+                        size={20}
                         strokeWidth={1.8}
                       />
                     </div>
 
-                    {/* Audio Info */}
+                    {/* File Info */}
+
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-xs font-medium">
+                      <p className="truncate text-xs font-medium text-gray-800">
                         {file.name}
                       </p>
 
@@ -263,129 +387,65 @@ export default function MessageBubble({
                           file.size
                         )}
                       </p>
-
-                      <audio
-                        src={
-                          attachment.preview
-                        }
-                        controls
-                        className="
-                          mt-1
-                          h-7
-                          w-full
-                        "
-                      />
                     </div>
+
+                    {/* Download */}
+
+                    <button
+                      type="button"
+                      aria-label={`Download ${file.name}`}
+                      onClick={() => {
+                        const url =
+                          URL.createObjectURL(
+                            file
+                          );
+
+                        const link =
+                          document.createElement(
+                            "a"
+                          );
+
+                        link.href =
+                          url;
+
+                        link.download =
+                          file.name;
+
+                        document.body.appendChild(
+                          link
+                        );
+
+                        link.click();
+
+                        link.remove();
+
+                        URL.revokeObjectURL(
+                          url
+                        );
+                      }}
+                      className="
+                        flex
+                        h-8
+                        w-8
+                        shrink-0
+                        items-center
+                        justify-center
+                        rounded-full
+                        text-gray-500
+                        transition
+                        hover:bg-white
+                        hover:text-gray-800
+                      "
+                    >
+                      <Download
+                        size={17}
+                        strokeWidth={1.8}
+                      />
+                    </button>
                   </div>
                 );
               }
-
-              // =========================
-              // Other File
-              // =========================
-
-              return (
-                <div
-                  key={attachment.id}
-                  className="
-                    flex
-                    min-w-64
-                    max-w-full
-                    items-center
-                    gap-3
-                    rounded-xl
-                    bg-black/5
-                    px-3
-                    py-2.5
-                  "
-                >
-                  {/* File Icon */}
-                  <div
-                    className="
-                      flex
-                      h-10
-                      w-10
-                      shrink-0
-                      items-center
-                      justify-center
-                      rounded-xl
-                      bg-white
-                      text-gray-500
-                      shadow-sm
-                    "
-                  >
-                    <FileText
-                      size={20}
-                      strokeWidth={1.8}
-                    />
-                  </div>
-
-                  {/* File Info */}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium text-gray-800">
-                      {file.name}
-                    </p>
-
-                    <p className="mt-0.5 text-[10px] text-gray-500">
-                      {formatFileSize(
-                        file.size
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Download */}
-                  <button
-                    type="button"
-                    aria-label={`Download ${file.name}`}
-                    onClick={() => {
-                      const url =
-                        URL.createObjectURL(
-                          file
-                        );
-
-                      const link =
-                        document.createElement(
-                          "a"
-                        );
-
-                      link.href = url;
-                      link.download =
-                        file.name;
-
-                      document.body.appendChild(
-                        link
-                      );
-
-                      link.click();
-
-                      link.remove();
-
-                      URL.revokeObjectURL(
-                        url
-                      );
-                    }}
-                    className="
-                      flex
-                      h-8
-                      w-8
-                      shrink-0
-                      items-center
-                      justify-center
-                      rounded-full
-                      text-gray-500
-                      transition
-                      hover:bg-white
-                      hover:text-gray-800
-                    "
-                  >
-                    <Download
-                      size={17}
-                      strokeWidth={1.8}
-                    />
-                  </button>
-                </div>
-              );
-            })}
+            )}
           </div>
         )}
 
@@ -428,12 +488,18 @@ export default function MessageBubble({
           `}
         >
           {/* Time */}
-          <span>{message.time}</span>
+
+          <span>
+            {message.time}
+          </span>
 
           {/* Status */}
+
           {isSent && (
             <MessageStatus
-              status={message.status}
+              status={
+                message.status
+              }
             />
           )}
         </div>

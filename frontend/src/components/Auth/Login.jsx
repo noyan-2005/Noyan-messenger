@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import Input from "../ui/Input";
 import OtpInput from "../ui/OtpInput";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
   const [loginMode, setLoginMode] = useState("phone");
@@ -14,6 +16,9 @@ export default function Login() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [loginError, setLoginError] = useState("");
+
+  const navigate = useNavigate();
+  const { setUser } = useAuth();
 
   // Resend timer
   const [resendTimer, setResendTimer] = useState(60);
@@ -78,7 +83,7 @@ export default function Login() {
 
     try {
         const response = await fetch(
-        "http://127.0.0.1:8000/api/accounts/login/",
+        "http://localhost:8000/api/accounts/login/",
         {
             method: "POST",
             headers: {
@@ -100,6 +105,11 @@ export default function Login() {
         }
 
         console.log("Login successful:", data);
+        setUser({
+          username: data.username,
+          user_id: data.user_id,
+        });
+        navigate("/chat");
 
     } catch (error) {
         console.error(error);

@@ -1518,7 +1518,8 @@ def get_messages(request):
     messages = (
         Message.objects
         .filter(
-            chat=chat
+            chat=chat,
+            is_deleted = False,
         )
         .select_related(
             "sender",
