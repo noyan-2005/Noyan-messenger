@@ -1,10 +1,6 @@
-
-import { useState } from "react";
 import { MessagesSquare, Settings, Contact } from "lucide-react";
 
-export default function Navbar() {
-  const [active, setActive] = useState("chats");
-
+export default function Navbar({ active, setActive }) {
   const navItems = [
     {
       id: "chats",
@@ -29,10 +25,19 @@ export default function Navbar() {
   ];
 
   return (
-    <nav className="relative bottom-4 z-50 flex items-center justify-center rounded-[90px]">
+    <nav
+      className="
+        fixed
+        bottom-5
+        left-2
+        z-50
+        w-fit
+      
+      "
+    >
       <div
         className="
-          flex items-center 
+          flex items-center
           rounded-[90px]
           border border-white/10
           bg-gray-900/[0.05]
@@ -40,7 +45,6 @@ export default function Navbar() {
           shadow-2xl shadow-black/30
           backdrop-blur-2xl
           h-13
-          
         "
       >
         {navItems.map((item) => {
@@ -53,9 +57,12 @@ export default function Navbar() {
               type="button"
               onClick={() => setActive(item.id)}
               className={`
-                group flex min-w-[68px] flex-col items-center justify-center
-                rounded-[38px] px-3 py-1
-                transition-all duration-300 cursor-pointer
+                group flex min-w-[68px]
+                flex-col items-center justify-center
+                rounded-[38px]
+                px-3 py-1
+                cursor-pointer
+                transition-all duration-300
                 ${
                   isActive
                     ? "bg-violet-300/30 text-violet-400"
