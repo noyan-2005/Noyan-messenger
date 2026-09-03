@@ -1,6 +1,7 @@
 import ChatItem from "./ChatItem";
 import HeaderIcon from "../ui/HeaderIcon";
 import ChatSearch from "./ChatSearch";
+import CreateChatButton from "./CreateChatButton";
 
 export default function ChatSidebar({
   chats = [],
@@ -72,7 +73,9 @@ export default function ChatSidebar({
           />
         ))}
       </div>
-
+      <div className="relative shrink-0">
+        <CreateChatButton />
+      </div>
     </aside>
   );
 }
