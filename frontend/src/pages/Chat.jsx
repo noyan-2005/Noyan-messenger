@@ -1,28 +1,30 @@
 import { useState } from "react";
 
 import ChatLayout from "../components/Chat/ChatLayout";
-import Navbar from "../components/Chat/Navbar";
 import ProfileModal from "../components/modals/ProfileModal";
+import SettingModal from "../components/modals/SettingModal";
 
 export default function Chat() {
-    const [active, setActive] = useState("chats");
-    return (
+  const [active, setActive] = useState("chats");
 
-        <>
-
-        <ChatLayout />
-        <Navbar
-            active={active}
-            setActive={setActive}
-        />
+  return (
+    <>
+      <ChatLayout
+        active={active}
+        setActive={setActive}
+      />
 
       {active === "profile" && (
         <ProfileModal
-            onClose={() => setActive("chats")}
-            />
-        )}
-    
-        </>
-    )
-    
+          onClose={() => setActive("chats")}
+        />
+      )}
+
+      {active === "settings" && (
+        <SettingModal
+          onClose={() => setActive("chats")}
+        />
+      )}
+    </>
+  );
 }

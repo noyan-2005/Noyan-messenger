@@ -25,16 +25,7 @@ export default function Navbar({ active, setActive }) {
   ];
 
   return (
-    <nav
-      className="
-        fixed
-        bottom-5
-        left-2
-        z-50
-        w-fit
-      
-      "
-    >
+    <nav className="absolute bottom-5 left-1/2 z-50 w-fit -translate-x-1/2">
       <div
         className="
           flex items-center

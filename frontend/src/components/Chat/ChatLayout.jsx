@@ -4,10 +4,11 @@ import ChatSidebar from "./ChatSidebar";
 import ChatHeader from "./ChatHeader";
 import MessageInput from "./MessageInput";
 import MessageList from "./MessageList";
+import Navbar from "./Navbar";
 
 import { useAuth } from "../../context/AuthContext";
 
-export default function ChatLayout() {
+export default function ChatLayout({active, setActive}) {
   const { user } = useAuth();
 
   const [chats, setChats] = useState([]);
@@ -524,6 +525,10 @@ export default function ChatLayout() {
             onSelectChat={
               handleSelectChat
             }
+          />
+          <Navbar
+            active={active}
+            setActive={setActive}
           />
         </div>
       </div>
